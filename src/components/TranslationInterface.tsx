@@ -1,50 +1,70 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
 import QuickActions from './QuickActions';
 import RecentSearches from './RecentSearches';
+import DictionaryUpload from './DictionaryUpload';
+import ApiKeySetup from './ApiKeySetup';
+import { dictionaryService } from '../services/dictionaryService';
+import { intelligentSearchService } from '../services/intelligentSearch';
+import { DictionaryEntry } from '../types/dictionary';
 
 const TranslationInterface = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentTranslation, setCurrentTranslation] = useState(null);
+  const [currentTranslation, setCurrentTranslation] = useState<DictionaryEntry | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [searchSource, setSearchSource] = useState<'dictionary' | 'ai'>('dictionary');
+  const [confidence, setConfidence] = useState(1.0);
+  const [showSetup, setShowSetup] = useState(false);
   const [recentSearches, setRecentSearches] = useState([
     { english: 'hello', ibibio: 'nno', meaning: 'A greeting; expression of welcome' },
     { english: 'love', ibibio: 'uduak', meaning: 'Deep affection or care for someone' },
     { english: 'water', ibibio: 'mmong', meaning: 'Clear liquid essential for life' },
   ]);
 
+  useEffect(() => {
+    // Load dictionary on component mount
+    dictionaryService.loadDictionary();
+  }, []);
+
   const handleSearch = async (query: string) => {
     if (!query.trim()) return;
     
     setIsLoading(true);
     setSearchQuery(query);
+    setCurrentTranslation(null);
     
-    // Simulate AI translation process
-    setTimeout(() => {
-      const mockTranslation = {
-        english: query,
-        ibibio: query === 'thank you' ? 'sosongo' : query === 'good morning' ? 'emem owo' : 'uduak',
-        meaning: query === 'thank you' ? 'Expression of gratitude' : query === 'good morning' ? 'Morning greeting' : 'Deep affection or care',
-        partOfSpeech: 'phrase',
-        examples: [
-          { english: `"${query}" she said warmly`, ibibio: `"${query === 'thank you' ? 'sosongo' : 'uduak'}" akwa edeme` },
-        ],
-        pronunciation: query === 'thank you' ? 'so-son-go' : 'u-du-ak',
-        cultural: query === 'love' ? 'In Ibibio culture, "uduak" represents not just romantic love, but deep care and connection within community and family bonds.' : null
-      };
+    try {
+      const result = await intelligentSearchService.search(query);
       
-      setCurrentTranslation(mockTranslation);
+      if (result.result) {
+        setCurrentTranslation(result.result);
+        setSearchSource(result.source);
+        setConfidence(result.confidence);
+        
+        // Add to recent searches
+        setRecentSearches(prev => {
+          const newSearch = { 
+            english: query, 
+            ibibio: result.result!.ibibio, 
+            meaning: result.result!.meaning 
+          };
+          return [newSearch, ...prev.filter(item => item.english !== query)].slice(0, 5);
+        });
+      } else {
+        // No result found
+        setCurrentTranslation(null);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      setCurrentTranslation(null);
+    } finally {
       setIsLoading(false);
-      
-      // Add to recent searches
-      setRecentSearches(prev => {
-        const newSearch = { english: query, ibibio: mockTranslation.ibibio, meaning: mockTranslation.meaning };
-        return [newSearch, ...prev.filter(item => item.english !== query)].slice(0, 5);
-      });
-    }, 1500);
+    }
   };
+
+  const stats = dictionaryService.getStats();
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -54,9 +74,38 @@ const TranslationInterface = () => {
           Discover Ibibio
         </h2>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Intelligent English to Ibibio translation powered by AI. Explore language, culture, and meaning.
+          Intelligent English to Ibibio translation powered by AI and your dictionary. Explore language, culture, and meaning.
         </p>
+        
+        {/* Setup Toggle */}
+        <Button 
+          variant="outline" 
+          onClick={() => setShowSetup(!showSetup)}
+          className="mt-4"
+        >
+          {showSetup ? 'Hide Setup' : 'Setup Dictionary & API'}
+        </Button>
       </div>
+
+      {/* Setup Section */}
+      {showSetup && (
+        <div className="space-y-6">
+          <DictionaryUpload />
+          <ApiKeySetup />
+        </div>
+      )}
+
+      {/* Dictionary Stats */}
+      {stats.isLoaded && (
+        <div className="text-center p-4 bg-blue-50 rounded-lg">
+          <p className="text-sm text-blue-700">
+            Dictionary loaded: <span className="font-semibold">{stats.totalEntries} entries</span>
+            {stats.categories.length > 0 && (
+              <span className="ml-2">• Categories: {stats.categories.join(', ')}</span>
+            )}
+          </p>
+        </div>
+      )}
 
       {/* Search Interface */}
       <SearchBar 
@@ -70,10 +119,19 @@ const TranslationInterface = () => {
 
       {/* Translation Result */}
       {currentTranslation && (
-        <TranslationResult 
-          translation={currentTranslation}
-          isLoading={isLoading}
-        />
+        <div className="space-y-4">
+          <div className="text-center">
+            <div className="inline-flex items-center space-x-2 text-xs bg-gray-100 px-3 py-1 rounded-full">
+              <span>Source: {searchSource === 'dictionary' ? 'Dictionary' : 'AI'}</span>
+              <span>•</span>
+              <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
+            </div>
+          </div>
+          <TranslationResult 
+            translation={currentTranslation}
+            isLoading={isLoading}
+          />
+        </div>
       )}
 
       {/* Recent Searches */}
