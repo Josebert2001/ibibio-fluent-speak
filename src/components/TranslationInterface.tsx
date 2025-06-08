@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
 import QuickActions from './QuickActions';
