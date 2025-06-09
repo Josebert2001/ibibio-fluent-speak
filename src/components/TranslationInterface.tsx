@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { AlertCircle } from 'lucide-react';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
 import QuickActions from './QuickActions';
@@ -8,6 +9,7 @@ import DictionaryUpload from './DictionaryUpload';
 import ApiKeySetup from './ApiKeySetup';
 import { dictionaryService } from '../services/dictionaryService';
 import { intelligentSearchService } from '../services/intelligentSearch';
+import { groqService } from '../services/groqService';
 import { DictionaryEntry } from '../types/dictionary';
 
 const TranslationInterface = () => {
@@ -17,6 +19,7 @@ const TranslationInterface = () => {
   const [searchSource, setSearchSource] = useState<'dictionary' | 'ai' | 'langchain-web' | 'cache'>('dictionary');
   const [confidence, setConfidence] = useState(1.0);
   const [showSetup, setShowSetup] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [recentSearches, setRecentSearches] = useState([
     { english: 'hello', ibibio: 'nno', meaning: 'A greeting; expression of welcome' },
     { english: 'love', ibibio: 'uduak', meaning: 'Deep affection or care for someone' },
@@ -34,6 +37,7 @@ const TranslationInterface = () => {
     setIsLoading(true);
     setSearchQuery(query);
     setCurrentTranslation(null);
+    setSearchError(null);
     
     try {
       const result = await intelligentSearchService.search(query);
@@ -53,12 +57,16 @@ const TranslationInterface = () => {
           return [newSearch, ...prev.filter(item => item.english !== query)].slice(0, 5);
         });
       } else {
-        // No result found
+        // No result found, show error if available
         setCurrentTranslation(null);
+        if (result.error) {
+          setSearchError(result.error);
+        }
       }
     } catch (error) {
       console.error('Search error:', error);
       setCurrentTranslation(null);
+      setSearchError('An unexpected error occurred during search.');
     } finally {
       setIsLoading(false);
     }
@@ -75,6 +83,7 @@ const TranslationInterface = () => {
   };
 
   const stats = dictionaryService.getStats();
+  const hasApiKey = !!groqService.getApiKey();
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -96,6 +105,17 @@ const TranslationInterface = () => {
           {showSetup ? 'Hide Setup' : 'Setup Dictionary & API'}
         </Button>
       </div>
+
+      {/* API Key Warning */}
+      {!hasApiKey && (
+        <div className="flex items-center space-x-2 text-orange-600 bg-orange-50 p-4 rounded-lg border border-orange-200">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-medium">Limited functionality without API key</p>
+            <p>Dictionary search is available, but AI-powered translations require a Groq API key. Click "Setup Dictionary & API" to configure.</p>
+          </div>
+        </div>
+      )}
 
       {/* Setup Section */}
       {showSetup && (
@@ -126,6 +146,16 @@ const TranslationInterface = () => {
 
       {/* Quick Actions */}
       <QuickActions onQuickSearch={handleSearch} />
+
+      {/* Search Error */}
+      {searchError && (
+        <div className="flex items-center space-x-2 text-red-600 bg-red-50 p-4 rounded-lg border border-red-200">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <div className="text-sm">
+            <p>{searchError}</p>
+          </div>
+        </div>
+      )}
 
       {/* Translation Result */}
       {currentTranslation && (

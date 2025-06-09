@@ -1,84 +1,82 @@
-
 import { dictionaryService } from './dictionaryService';
 import { groqService } from './groqService';
 import { langchainAgentService } from './langchainAgent';
-import { DictionaryEntry, SearchResult } from '../types/dictionary';
+import { DictionaryEntry } from '../types/dictionary';
+
+interface SearchResult {
+  result: DictionaryEntry | null;
+  source: 'dictionary' | 'ai' | 'langchain-web' | 'cache';
+  confidence: number;
+  error?: string;
+}
 
 class IntelligentSearchService {
-  async search(query: string): Promise<{
-    result: DictionaryEntry | null;
-    source: 'dictionary' | 'ai' | 'langchain-web' | 'cache';
-    confidence: number;
-  }> {
-    console.log('Searching for:', query);
-
-    // Step 1: Try exact dictionary lookup
-    const exactMatch = dictionaryService.searchExact(query);
-    if (exactMatch) {
-      console.log('Found exact match in dictionary');
+  async search(query: string): Promise<SearchResult> {
+    const trimmedQuery = query.trim().toLowerCase();
+    
+    // First, try dictionary search
+    const dictionaryResult = dictionaryService.search(trimmedQuery);
+    if (dictionaryResult) {
       return {
-        result: exactMatch,
+        result: dictionaryResult,
         source: 'dictionary',
         confidence: 1.0
       };
     }
 
-    // Step 2: Try fuzzy dictionary search
-    const fuzzyResults = dictionaryService.searchFuzzy(query, 1);
-    if (fuzzyResults.length > 0 && fuzzyResults[0].confidence > 0.7) {
-      console.log('Found fuzzy match in dictionary');
+    // Check if API key is available for AI-powered searches
+    const apiKey = groqService.getApiKey();
+    if (!apiKey) {
       return {
-        result: fuzzyResults[0].entry,
+        result: null,
         source: 'dictionary',
-        confidence: fuzzyResults[0].confidence
+        confidence: 0,
+        error: 'API key required for AI-powered translations. Please configure your Groq API key in the setup section.'
       };
     }
 
-    // Step 3: Try Langchain web search (new primary method)
+    // Try Langchain web search
     try {
-      console.log('Using Langchain agent for web search');
-      const webResult = await langchainAgentService.searchWithAgent(query);
-      
+      const webResult = await langchainAgentService.searchWithAgent(trimmedQuery);
       if (webResult.result) {
+        return webResult;
+      }
+    } catch (error) {
+      console.warn('Langchain web search failed:', error);
+      // Continue to AI translation as fallback
+    }
+
+    // Try AI translation as fallback
+    try {
+      const aiResult = await groqService.translateWithAI(trimmedQuery);
+      if (aiResult.ibibio) {
+        const entry: DictionaryEntry = {
+          id: `ai-${Date.now()}`,
+          english: trimmedQuery,
+          ibibio: aiResult.ibibio,
+          meaning: aiResult.meaning,
+          partOfSpeech: 'unknown',
+          examples: aiResult.examples || [],
+          cultural: aiResult.cultural || undefined
+        };
+
         return {
-          result: webResult.result,
-          source: webResult.source as 'langchain-web' | 'cache',
-          confidence: webResult.confidence
+          result: entry,
+          source: 'ai',
+          confidence: aiResult.confidence
         };
       }
     } catch (error) {
-      console.error('Langchain web search failed:', error);
-      // Continue to fallback AI method
+      console.warn('AI translation failed:', error);
     }
 
-    // Step 4: Fallback to direct Groq AI translation
-    try {
-      console.log('Using direct AI for translation');
-      const aiResponse = await groqService.translateWithAI(query);
-      
-      const aiEntry: DictionaryEntry = {
-        id: `ai-${Date.now()}`,
-        english: query,
-        ibibio: aiResponse.ibibio,
-        meaning: aiResponse.meaning,
-        partOfSpeech: 'unknown',
-        examples: aiResponse.examples,
-        cultural: aiResponse.cultural
-      };
-
-      return {
-        result: aiEntry,
-        source: 'ai',
-        confidence: aiResponse.confidence
-      };
-    } catch (error) {
-      console.error('AI translation failed:', error);
-      return {
-        result: null,
-        source: 'ai',
-        confidence: 0
-      };
-    }
+    // No results found
+    return {
+      result: null,
+      source: 'dictionary',
+      confidence: 0,
+      error: 'No translation found. Try a different word or check your API key configuration.'
+    };
   }
 }
 
