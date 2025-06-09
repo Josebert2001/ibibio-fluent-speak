@@ -1,12 +1,13 @@
 
 import { dictionaryService } from './dictionaryService';
 import { groqService } from './groqService';
+import { langchainAgentService } from './langchainAgent';
 import { DictionaryEntry, SearchResult } from '../types/dictionary';
 
 class IntelligentSearchService {
   async search(query: string): Promise<{
     result: DictionaryEntry | null;
-    source: 'dictionary' | 'ai';
+    source: 'dictionary' | 'ai' | 'langchain-web' | 'cache';
     confidence: number;
   }> {
     console.log('Searching for:', query);
@@ -33,9 +34,26 @@ class IntelligentSearchService {
       };
     }
 
-    // Step 3: Use Groq AI for translation
+    // Step 3: Try Langchain web search (new primary method)
     try {
-      console.log('Using AI for translation');
+      console.log('Using Langchain agent for web search');
+      const webResult = await langchainAgentService.searchWithAgent(query);
+      
+      if (webResult.result) {
+        return {
+          result: webResult.result,
+          source: webResult.source as 'langchain-web' | 'cache',
+          confidence: webResult.confidence
+        };
+      }
+    } catch (error) {
+      console.error('Langchain web search failed:', error);
+      // Continue to fallback AI method
+    }
+
+    // Step 4: Fallback to direct Groq AI translation
+    try {
+      console.log('Using direct AI for translation');
       const aiResponse = await groqService.translateWithAI(query);
       
       const aiEntry: DictionaryEntry = {

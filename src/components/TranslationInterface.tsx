@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import SearchBar from './SearchBar';
@@ -15,7 +14,7 @@ const TranslationInterface = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentTranslation, setCurrentTranslation] = useState<DictionaryEntry | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [searchSource, setSearchSource] = useState<'dictionary' | 'ai'>('dictionary');
+  const [searchSource, setSearchSource] = useState<'dictionary' | 'ai' | 'langchain-web' | 'cache'>('dictionary');
   const [confidence, setConfidence] = useState(1.0);
   const [showSetup, setShowSetup] = useState(false);
   const [recentSearches, setRecentSearches] = useState([
@@ -65,6 +64,16 @@ const TranslationInterface = () => {
     }
   };
 
+  const getSourceLabel = (source: string) => {
+    switch (source) {
+      case 'dictionary': return 'Dictionary';
+      case 'ai': return 'AI';
+      case 'langchain-web': return 'Web Search';
+      case 'cache': return 'Cached Web';
+      default: return source;
+    }
+  };
+
   const stats = dictionaryService.getStats();
 
   return (
@@ -75,7 +84,7 @@ const TranslationInterface = () => {
           Discover Ibibio
         </h2>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Intelligent English to Ibibio translation powered by AI and your dictionary. Explore language, culture, and meaning.
+          Intelligent English to Ibibio translation powered by AI, web search, and your dictionary. Explore language, culture, and meaning.
         </p>
         
         {/* Setup Toggle */}
@@ -123,7 +132,7 @@ const TranslationInterface = () => {
         <div className="space-y-4">
           <div className="text-center">
             <div className="inline-flex items-center space-x-2 text-xs bg-gray-100 px-3 py-1 rounded-full">
-              <span>Source: {searchSource === 'dictionary' ? 'Dictionary' : 'AI'}</span>
+              <span>Source: {getSourceLabel(searchSource)}</span>
               <span>•</span>
               <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
             </div>
