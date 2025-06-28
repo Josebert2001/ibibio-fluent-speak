@@ -40,6 +40,11 @@ class EnhancedDictionaryService {
     this.searchIndex.clear();
     
     this.dictionary.forEach(entry => {
+      // Check if entry.english exists and is a valid string
+      if (!entry.english || typeof entry.english !== 'string') {
+        return; // Skip this entry if english property is invalid
+      }
+      
       const english = entry.english.toLowerCase().trim();
       
       // Index exact phrase
