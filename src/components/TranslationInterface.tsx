@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw, Sparkles, ChevronDown, ChevronUp, Search, Globe } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
+import ComprehensiveSearchResult from './ComprehensiveSearchResult';
 import QuickActions from './QuickActions';
 import RecentSearches from './RecentSearches';
 import DictionaryUpload from './DictionaryUpload';
 import { enhancedDictionaryService } from '../services/enhancedDictionaryService';
 import { dictionaryService } from '../services/dictionaryService';
 import { parallelSearchService } from '../services/parallelSearchService';
+import { comprehensiveDictionaryService } from '../services/comprehensiveDictionaryService';
 import { groqService } from '../services/groqService';
 import { DictionaryEntry } from '../types/dictionary';
 
@@ -27,7 +29,12 @@ const TranslationInterface = () => {
   const [responseTime, setResponseTime] = useState<number>(0);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
   
-  // New state for enhanced sentence processing
+  // New state for comprehensive search
+  const [searchMode, setSearchMode] = useState<'simple' | 'comprehensive'>('simple');
+  const [comprehensiveResult, setComprehensiveResult] = useState<any>(null);
+  const [requestOnlineSearch, setRequestOnlineSearch] = useState(false);
+  
+  // Enhanced state for sentence processing
   const [isMultiWord, setIsMultiWord] = useState(false);
   const [localResult, setLocalResult] = useState<DictionaryEntry | null>(null);
   const [onlineResult, setOnlineResult] = useState<DictionaryEntry | null>(null);
@@ -49,6 +56,7 @@ const TranslationInterface = () => {
         // Initialize dictionary services
         await dictionaryService.loadDictionary();
         await enhancedDictionaryService.loadDictionary();
+        await comprehensiveDictionaryService.initialize();
         
         // Initialize parallel search service
         await parallelSearchService.initialize();
@@ -62,7 +70,7 @@ const TranslationInterface = () => {
     initializeServices();
   }, []);
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = async (query: string, forceOnlineSearch: boolean = false) => {
     if (!query || typeof query !== 'string' || !query.trim()) {
       console.warn('Invalid search query:', query);
       return;
@@ -77,6 +85,7 @@ const TranslationInterface = () => {
     setIsLoading(true);
     setSearchQuery(safeQuery);
     setCurrentTranslation(null);
+    setComprehensiveResult(null);
     setSearchError(null);
     setAlternatives([]);
     setSources([]);
@@ -91,63 +100,107 @@ const TranslationInterface = () => {
     
     try {
       console.log('Searching for:', safeQuery);
+      console.log('Search mode:', searchMode);
+      console.log('Force online search:', forceOnlineSearch);
       
-      // Use parallel search service with enhanced sentence processing
-      const searchResult = await parallelSearchService.search(safeQuery);
-      
-      const endTime = performance.now();
-      const searchTime = endTime - startTime;
-      
-      if (searchResult.result) {
-        setCurrentTranslation(searchResult.result);
-        setSearchSource(searchResult.source);
-        setConfidence(searchResult.confidence / 100); // Convert to 0-1 scale
-        setAlternatives(searchResult.alternatives);
-        setSources(searchResult.sources);
+      if (searchMode === 'comprehensive') {
+        // Use comprehensive dictionary service
+        const result = await comprehensiveDictionaryService.search(safeQuery, forceOnlineSearch);
+        
+        const endTime = performance.now();
+        const searchTime = endTime - startTime;
+        
+        setComprehensiveResult(result);
         setResponseTime(searchTime);
         
-        // Set enhanced sentence processing data
-        setIsMultiWord(searchResult.isMultiWord || false);
-        setLocalResult(searchResult.localResult || null);
-        setOnlineResult(searchResult.onlineResult || null);
-        setWordBreakdown(searchResult.wordBreakdown || []);
+        // Also set basic translation if available
+        if (result.combinedTranslation) {
+          setCurrentTranslation({
+            id: `comprehensive-${Date.now()}`,
+            english: result.inputText,
+            ibibio: result.combinedTranslation.ibibio,
+            meaning: `Comprehensive translation (${result.combinedTranslation.source})`,
+            partOfSpeech: result.isMultiWord ? 'sentence' : 'word',
+            examples: [],
+            cultural: `Translated using ${result.combinedTranslation.source} method with ${result.combinedTranslation.confidence}% confidence`
+          });
+          setSearchSource(result.combinedTranslation.source);
+          setConfidence(result.combinedTranslation.confidence / 100);
+        }
         
-        // Add to recent searches
+        console.log('Comprehensive search completed:', result);
+      } else {
+        // Use parallel search service (existing functionality)
+        const searchResult = await parallelSearchService.search(safeQuery);
+        
+        const endTime = performance.now();
+        const searchTime = endTime - startTime;
+        
+        if (searchResult.result) {
+          setCurrentTranslation(searchResult.result);
+          setSearchSource(searchResult.source);
+          setConfidence(searchResult.confidence / 100);
+          setAlternatives(searchResult.alternatives);
+          setSources(searchResult.sources);
+          setResponseTime(searchTime);
+          
+          // Set enhanced sentence processing data
+          setIsMultiWord(searchResult.isMultiWord || false);
+          setLocalResult(searchResult.localResult || null);
+          setOnlineResult(searchResult.onlineResult || null);
+          setWordBreakdown(searchResult.wordBreakdown || []);
+          
+          console.log('Search completed successfully from source:', searchResult.source);
+          
+          // Log enhanced results if available
+          if (searchResult.isMultiWord) {
+            console.log('Multi-word search results:');
+            console.log('- Local result:', searchResult.localResult ? 'Found' : 'Not found');
+            console.log('- Online result:', searchResult.onlineResult ? 'Found' : 'Not found');
+            console.log('- Word breakdown:', searchResult.wordBreakdown?.length || 0, 'words');
+          }
+        } else {
+          setCurrentTranslation(null);
+          setSearchError(`No translation found for "${safeQuery}". Try a different word or phrase.`);
+          setResponseTime(searchTime);
+          console.log('No translation found');
+        }
+      }
+
+      // Add to recent searches
+      if (currentTranslation || comprehensiveResult?.combinedTranslation) {
+        const translation = currentTranslation || {
+          ibibio: comprehensiveResult.combinedTranslation.ibibio,
+          meaning: `Comprehensive translation`
+        };
+        
         setRecentSearches(prev => {
           const newSearch = { 
             english: safeQuery, 
-            ibibio: searchResult.result!.ibibio || '', 
-            meaning: searchResult.result!.meaning || '' 
+            ibibio: translation.ibibio || '', 
+            meaning: translation.meaning || '' 
           };
           return [newSearch, ...prev.filter(item => 
             item.english && typeof item.english === 'string' && 
             item.english.toLowerCase() !== safeQuery.toLowerCase()
           )].slice(0, 5);
         });
-        
-        console.log('Search completed successfully from source:', searchResult.source);
-        
-        // Log enhanced results if available
-        if (searchResult.isMultiWord) {
-          console.log('Multi-word search results:');
-          console.log('- Local result:', searchResult.localResult ? 'Found' : 'Not found');
-          console.log('- Online result:', searchResult.onlineResult ? 'Found' : 'Not found');
-          console.log('- Word breakdown:', searchResult.wordBreakdown?.length || 0, 'words');
-        }
-      } else {
-        setCurrentTranslation(null);
-        setSearchError(`No translation found for "${safeQuery}". Try a different word or phrase.`);
-        setResponseTime(searchTime);
-        console.log('No translation found');
       }
 
     } catch (error) {
       console.error('Search error:', error);
       setCurrentTranslation(null);
+      setComprehensiveResult(null);
       setSearchError('An unexpected error occurred during search. Please try again.');
       setResponseTime(performance.now() - startTime);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleOnlineSearch = () => {
+    if (searchQuery) {
+      handleSearch(searchQuery, true);
     }
   };
 
@@ -179,6 +232,9 @@ const TranslationInterface = () => {
       case 'online_sentence': return 'Online Search (Sentence)';
       case 'local_fallback': return 'Local Dictionary (Fallback)';
       case 'cache': return 'Cached Result';
+      case 'dictionary': return 'Dictionary';
+      case 'online': return 'Online';
+      case 'hybrid': return 'Hybrid';
       default: return source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
   };
@@ -194,14 +250,39 @@ const TranslationInterface = () => {
           Ibi-Voice
         </h2>
         <p className="text-base sm:text-lg lg:text-xl text-gray-600 max-w-2xl mx-auto px-2">
-          English to Ibibio translation with local dictionary and online search
+          Comprehensive English to Ibibio translation with dictionary analysis and online search
         </p>
         
-        {/* Search Mode Badge - Mobile Friendly */}
+        {/* Search Mode Selection */}
+        <div className="flex justify-center space-x-2">
+          <Button
+            variant={searchMode === 'simple' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSearchMode('simple')}
+            className="flex items-center space-x-1"
+          >
+            <Search className="w-3 h-3" />
+            <span>Simple</span>
+          </Button>
+          <Button
+            variant={searchMode === 'comprehensive' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setSearchMode('comprehensive')}
+            className="flex items-center space-x-1"
+          >
+            <BookOpen className="w-3 h-3" />
+            <span>Comprehensive</span>
+          </Button>
+        </div>
+        
+        {/* Search Mode Badge */}
         <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-green-100 px-3 py-2 rounded-full border border-blue-200 text-xs sm:text-sm">
           <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
           <span className="font-medium text-blue-700">
-            {hasApiKey ? 'Dictionary + Online + Sentences' : 'Dictionary Only'}
+            {searchMode === 'comprehensive' 
+              ? (hasApiKey ? 'Comprehensive Analysis + Online' : 'Comprehensive Analysis') 
+              : (hasApiKey ? 'Dictionary + Online + Sentences' : 'Dictionary Only')
+            }
           </span>
         </div>
       </div>
@@ -219,15 +300,32 @@ const TranslationInterface = () => {
       {/* Search Interface */}
       <div className="px-2 sm:px-0">
         <SearchBar 
-          onSearch={handleSearch}
+          onSearch={(query) => handleSearch(query, false)}
           isLoading={isLoading}
-          placeholder="Enter English word or sentence..."
+          placeholder={searchMode === 'comprehensive' 
+            ? "Enter English word or sentence for comprehensive analysis..." 
+            : "Enter English word or sentence..."
+          }
         />
       </div>
 
+      {/* Online Search Button for Comprehensive Mode */}
+      {searchMode === 'comprehensive' && hasApiKey && searchQuery && !isLoading && (
+        <div className="text-center px-2 sm:px-0">
+          <Button
+            onClick={handleOnlineSearch}
+            variant="outline"
+            className="flex items-center space-x-2"
+          >
+            <Globe className="w-4 h-4" />
+            <span>Search Online Sources</span>
+          </Button>
+        </div>
+      )}
+
       {/* Quick Actions - Mobile Optimized */}
       <div className="px-2 sm:px-0">
-        <QuickActions onQuickSearch={handleSearch} />
+        <QuickActions onQuickSearch={(query) => handleSearch(query, false)} />
       </div>
 
       {/* Search Error - Mobile Friendly */}
@@ -240,8 +338,8 @@ const TranslationInterface = () => {
         </div>
       )}
 
-      {/* Translation Result */}
-      {currentTranslation && (
+      {/* Results Display */}
+      {(currentTranslation || comprehensiveResult) && (
         <div className="space-y-3 sm:space-y-4">
           {/* Result Metadata - Mobile Optimized */}
           <div className="text-center px-2 sm:px-0">
@@ -257,23 +355,36 @@ const TranslationInterface = () => {
                   <span className="text-purple-600 font-medium">Sentence Mode</span>
                 </>
               )}
+              {searchMode === 'comprehensive' && (
+                <>
+                  <span className="hidden sm:inline">•</span>
+                  <span className="text-blue-600 font-medium">Comprehensive</span>
+                </>
+              )}
             </div>
           </div>
           
           <div className="px-2 sm:px-0">
-            <TranslationResult 
-              translation={currentTranslation}
-              isLoading={isLoading}
-              isMultiWord={isMultiWord}
-              localResult={localResult}
-              onlineResult={onlineResult}
-              wordBreakdown={wordBreakdown}
-              source={searchSource}
-            />
+            {searchMode === 'comprehensive' && comprehensiveResult ? (
+              <ComprehensiveSearchResult 
+                result={comprehensiveResult}
+                isLoading={isLoading}
+              />
+            ) : (
+              <TranslationResult 
+                translation={currentTranslation!}
+                isLoading={isLoading}
+                isMultiWord={isMultiWord}
+                localResult={localResult}
+                onlineResult={onlineResult}
+                wordBreakdown={wordBreakdown}
+                source={searchSource}
+              />
+            )}
           </div>
 
           {/* Dictionary Alternative Results - Mobile Optimized */}
-          {alternatives.length > 0 && (
+          {alternatives.length > 0 && searchMode === 'simple' && (
             <div className="mt-4 sm:mt-6 px-2 sm:px-0">
               <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">Similar Words</h3>
               <div className="grid gap-2 sm:gap-3">
@@ -293,11 +404,11 @@ const TranslationInterface = () => {
       )}
 
       {/* Recent Searches - Mobile Optimized */}
-      {!currentTranslation && recentSearches.length > 0 && (
+      {!currentTranslation && !comprehensiveResult && recentSearches.length > 0 && (
         <div className="px-2 sm:px-0">
           <RecentSearches 
             searches={recentSearches}
-            onSearchSelect={handleSearch}
+            onSearchSelect={(query) => handleSearch(query, false)}
           />
         </div>
       )}
