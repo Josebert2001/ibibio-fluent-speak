@@ -3,6 +3,7 @@ import { dictionaryService } from './dictionaryService';
 import { cacheManager } from './cacheManager';
 import { searchEngine } from './searchEngine';
 import { langchainAgentService } from './langchainAgent';
+import { sentenceTranslationService } from './sentenceTranslationService';
 import { DictionaryEntry } from '../types/dictionary';
 
 interface ParallelSearchResult {
@@ -12,6 +13,17 @@ interface ParallelSearchResult {
   alternatives: DictionaryEntry[];
   sources: string[];
   responseTime: number;
+  // New fields for sentence processing
+  isMultiWord?: boolean;
+  localResult?: DictionaryEntry | null;
+  onlineResult?: DictionaryEntry | null;
+  wordBreakdown?: Array<{
+    english: string;
+    ibibio: string;
+    found: boolean;
+    confidence: number;
+    source: string;
+  }>;
 }
 
 class ParallelSearchService {
@@ -66,118 +78,17 @@ class ParallelSearchService {
     }
 
     try {
-      // Step 1: Check if this is a sentence (multiple words)
+      // Step 1: Determine if this is a multi-word query (sentence)
       const words = normalizedQuery.split(/\s+/).filter(word => word.length > 0);
+      const isMultiWord = words.length > 1;
       
-      if (words.length > 1) {
+      if (isMultiWord) {
         console.log(`Processing sentence with ${words.length} words:`, words);
-        
-        // Try local sentence translation first
-        const sentenceResult = await this.translateSentenceLocally(words);
-        if (sentenceResult.result) {
-          const result: ParallelSearchResult = {
-            result: sentenceResult.result,
-            confidence: sentenceResult.confidence,
-            source: 'local_sentence',
-            alternatives: [],
-            sources: ['local_dictionary'],
-            responseTime: Date.now() - startTime
-          };
-          
-          cacheManager.set(normalizedQuery, result, result.source);
-          return result;
-        }
+        return await this.processSentence(query, normalizedQuery, startTime);
+      } else {
+        console.log(`Processing single word:`, query);
+        return await this.processSingleWord(normalizedQuery, startTime);
       }
-
-      // Step 2: Search local dictionary for exact phrase
-      const localResult = await this.searchLocal(normalizedQuery);
-      
-      if (localResult.result) {
-        // Found in local dictionary - return immediately
-        const result: ParallelSearchResult = {
-          result: localResult.result,
-          confidence: localResult.confidence,
-          source: 'local_dictionary',
-          alternatives: localResult.alternatives,
-          sources: ['local_dictionary'],
-          responseTime: Date.now() - startTime
-        };
-
-        // Cache the result
-        cacheManager.set(normalizedQuery, result, result.source);
-        return result;
-      }
-
-      // Step 3: Not found locally - try online search with AI
-      const apiKey = groqService.getApiKey();
-      if (!apiKey) {
-        // No API key available
-        return {
-          result: null,
-          confidence: 0,
-          source: 'none',
-          alternatives: [],
-          sources: [],
-          responseTime: Date.now() - startTime
-        };
-      }
-
-      console.log(`"${query}" not found in local dictionary. Searching online...`);
-      
-      // Step 4: Try Langchain agent first (if available)
-      if (langchainAgentService.isAvailable()) {
-        try {
-          const agentResult = await langchainAgentService.searchWithAgent(normalizedQuery);
-          
-          if (agentResult.result) {
-            const result: ParallelSearchResult = {
-              result: agentResult.result,
-              confidence: agentResult.confidence * 100,
-              source: agentResult.source,
-              alternatives: [],
-              sources: [agentResult.source],
-              responseTime: Date.now() - startTime
-            };
-
-            cacheManager.set(normalizedQuery, result, result.source);
-            return result;
-          }
-        } catch (agentError) {
-          console.warn('Langchain agent search failed, trying fallback:', agentError);
-        }
-      }
-      
-      // Step 5: Fallback to direct online search
-      try {
-        const onlineResult = await this.searchOnline(normalizedQuery);
-        
-        if (onlineResult) {
-          const result: ParallelSearchResult = {
-            result: onlineResult,
-            confidence: 75, // Online results get 75% confidence
-            source: 'online_search',
-            alternatives: [],
-            sources: ['online_search'],
-            responseTime: Date.now() - startTime
-          };
-
-          // Cache the online result
-          cacheManager.set(normalizedQuery, result, result.source);
-          return result;
-        }
-      } catch (onlineError) {
-        console.error('Online search failed:', onlineError);
-      }
-
-      // No results found anywhere
-      return {
-        result: null,
-        confidence: 0,
-        source: 'none',
-        alternatives: [],
-        sources: [],
-        responseTime: Date.now() - startTime
-      };
 
     } catch (error) {
       console.error('Search error:', error);
@@ -195,72 +106,179 @@ class ParallelSearchService {
     }
   }
 
-  private async translateSentenceLocally(words: string[]): Promise<{
-    result: DictionaryEntry | null;
-    confidence: number;
-  }> {
-    const translations: string[] = [];
-    const foundWords: string[] = [];
-    const notFoundWords: string[] = [];
+  private async processSentence(
+    originalQuery: string, 
+    normalizedQuery: string, 
+    startTime: number
+  ): Promise<ParallelSearchResult> {
+    
+    // Step 1: Check if exact sentence exists in dictionary
+    const exactSentenceMatch = await this.searchLocal(normalizedQuery);
+    
+    // Step 2: Process sentence with word-by-word analysis
+    const sentenceResult = await sentenceTranslationService.translateSentence(originalQuery);
+    
+    // Step 3: Determine primary result
+    let primaryResult: DictionaryEntry | null = null;
+    let primarySource = 'none';
+    let primaryConfidence = 0;
+    
+    // Prioritize exact sentence match if found
+    if (exactSentenceMatch.result) {
+      primaryResult = exactSentenceMatch.result;
+      primarySource = 'local_dictionary_exact';
+      primaryConfidence = exactSentenceMatch.confidence;
+    }
+    // Then prioritize online sentence translation if available
+    else if (sentenceResult.onlineResult) {
+      primaryResult = sentenceResult.onlineResult;
+      primarySource = 'online_sentence';
+      primaryConfidence = sentenceResult.onlineConfidence;
+    }
+    // Finally use local word-by-word translation
+    else if (sentenceResult.localResult) {
+      primaryResult = sentenceResult.localResult;
+      primarySource = 'local_sentence';
+      primaryConfidence = sentenceResult.localConfidence;
+    }
+    
+    // Step 4: Build alternatives array
+    const alternatives: DictionaryEntry[] = [];
+    
+    // Add local result as alternative if it's not the primary
+    if (sentenceResult.localResult && primarySource !== 'local_sentence') {
+      alternatives.push(sentenceResult.localResult);
+    }
+    
+    // Add online result as alternative if it's not the primary
+    if (sentenceResult.onlineResult && primarySource !== 'online_sentence') {
+      alternatives.push(sentenceResult.onlineResult);
+    }
+    
+    // Step 5: Determine sources
+    const sources: string[] = [];
+    if (sentenceResult.hasLocalTranslation) sources.push('local_dictionary');
+    if (sentenceResult.hasOnlineTranslation) sources.push('online_search');
+    
+    const result: ParallelSearchResult = {
+      result: primaryResult,
+      confidence: primaryConfidence,
+      source: primarySource,
+      alternatives,
+      sources,
+      responseTime: Date.now() - startTime,
+      isMultiWord: true,
+      localResult: sentenceResult.localResult,
+      onlineResult: sentenceResult.onlineResult,
+      wordBreakdown: sentenceResult.wordBreakdown
+    };
+    
+    // Cache the result
+    if (primaryResult) {
+      cacheManager.set(normalizedQuery, result, primarySource);
+    }
+    
+    return result;
+  }
 
-    // Look up each word individually
-    for (const word of words) {
-      // Skip very short words (articles, prepositions)
-      if (word.length <= 2 && !['is', 'am', 'be', 'to', 'of', 'in', 'on', 'at'].includes(word)) {
-        translations.push(word); // Keep as-is
-        continue;
-      }
+  private async processSingleWord(
+    normalizedQuery: string, 
+    startTime: number
+  ): Promise<ParallelSearchResult> {
+    
+    // Step 1: Search local dictionary
+    const localResult = await this.searchLocal(normalizedQuery);
+    
+    if (localResult.result) {
+      // Found in local dictionary - return immediately
+      const result: ParallelSearchResult = {
+        result: localResult.result,
+        confidence: localResult.confidence,
+        source: 'local_dictionary',
+        alternatives: localResult.alternatives,
+        sources: ['local_dictionary'],
+        responseTime: Date.now() - startTime,
+        isMultiWord: false
+      };
 
-      // Try exact match first
-      const exactMatch = searchEngine.searchExact(word);
-      if (exactMatch.length > 0) {
-        translations.push(exactMatch[0].ibibio);
-        foundWords.push(word);
-        continue;
-      }
-
-      // Try fuzzy search with high confidence threshold
-      const fuzzyResults = searchEngine.searchFuzzy(word, 1);
-      if (fuzzyResults.length > 0 && fuzzyResults[0].confidence > 0.8) {
-        translations.push(fuzzyResults[0].entry.ibibio);
-        foundWords.push(word);
-        continue;
-      }
-
-      // Word not found
-      notFoundWords.push(word);
-      translations.push(`[${word}]`); // Mark as untranslated
+      // Cache the result
+      cacheManager.set(normalizedQuery, result, result.source);
+      return result;
     }
 
-    console.log(`Local sentence analysis: Found ${foundWords.length}/${words.length} words`);
-    console.log('Found words:', foundWords);
-    console.log('Not found words:', notFoundWords);
-
-    // Calculate confidence based on found words
-    const confidence = foundWords.length / words.length;
-    
-    // Only return result if we found at least 70% of words
-    if (confidence >= 0.7) {
-      const ibibioSentence = translations.join(' ');
-      const englishSentence = words.join(' ');
-      
+    // Step 2: Not found locally - try online search with AI
+    const apiKey = groqService.getApiKey();
+    if (!apiKey) {
+      // No API key available
       return {
-        result: {
-          id: `sentence-${Date.now()}`,
-          english: englishSentence,
-          ibibio: ibibioSentence,
-          meaning: `Sentence translation: ${englishSentence}`,
-          partOfSpeech: 'sentence',
-          examples: [],
-          cultural: `Translated word-by-word from local dictionary (${Math.round(confidence * 100)}% coverage)`
-        },
-        confidence: confidence * 100
+        result: null,
+        confidence: 0,
+        source: 'none',
+        alternatives: [],
+        sources: [],
+        responseTime: Date.now() - startTime,
+        isMultiWord: false
       };
     }
 
+    console.log(`"${normalizedQuery}" not found in local dictionary. Searching online...`);
+    
+    // Step 3: Try Langchain agent first (if available)
+    if (langchainAgentService.isAvailable()) {
+      try {
+        const agentResult = await langchainAgentService.searchWithAgent(normalizedQuery);
+        
+        if (agentResult.result) {
+          const result: ParallelSearchResult = {
+            result: agentResult.result,
+            confidence: agentResult.confidence * 100,
+            source: agentResult.source,
+            alternatives: [],
+            sources: [agentResult.source],
+            responseTime: Date.now() - startTime,
+            isMultiWord: false
+          };
+
+          cacheManager.set(normalizedQuery, result, result.source);
+          return result;
+        }
+      } catch (agentError) {
+        console.warn('Langchain agent search failed, trying fallback:', agentError);
+      }
+    }
+    
+    // Step 4: Fallback to direct online search
+    try {
+      const onlineResult = await this.searchOnline(normalizedQuery);
+      
+      if (onlineResult) {
+        const result: ParallelSearchResult = {
+          result: onlineResult,
+          confidence: 75, // Online results get 75% confidence
+          source: 'online_search',
+          alternatives: [],
+          sources: ['online_search'],
+          responseTime: Date.now() - startTime,
+          isMultiWord: false
+        };
+
+        // Cache the online result
+        cacheManager.set(normalizedQuery, result, result.source);
+        return result;
+      }
+    } catch (onlineError) {
+      console.error('Online search failed:', onlineError);
+    }
+
+    // No results found anywhere
     return {
       result: null,
-      confidence: confidence * 100
+      confidence: 0,
+      source: 'none',
+      alternatives: [],
+      sources: [],
+      responseTime: Date.now() - startTime,
+      isMultiWord: false
     };
   }
 

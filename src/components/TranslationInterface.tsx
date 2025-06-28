@@ -26,6 +26,13 @@ const TranslationInterface = () => {
   const [sources, setSources] = useState<string[]>([]);
   const [responseTime, setResponseTime] = useState<number>(0);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
+  
+  // New state for enhanced sentence processing
+  const [isMultiWord, setIsMultiWord] = useState(false);
+  const [localResult, setLocalResult] = useState<DictionaryEntry | null>(null);
+  const [onlineResult, setOnlineResult] = useState<DictionaryEntry | null>(null);
+  const [wordBreakdown, setWordBreakdown] = useState<any[]>([]);
+  
   const [recentSearches, setRecentSearches] = useState([
     { english: 'hello', ibibio: 'nno', meaning: 'A greeting; expression of welcome' },
     { english: 'love', ibibio: 'uduak', meaning: 'Deep affection or care for someone' },
@@ -74,12 +81,18 @@ const TranslationInterface = () => {
     setAlternatives([]);
     setSources([]);
     
+    // Reset enhanced state
+    setIsMultiWord(false);
+    setLocalResult(null);
+    setOnlineResult(null);
+    setWordBreakdown([]);
+    
     const startTime = performance.now();
     
     try {
       console.log('Searching for:', safeQuery);
       
-      // Use parallel search service
+      // Use parallel search service with enhanced sentence processing
       const searchResult = await parallelSearchService.search(safeQuery);
       
       const endTime = performance.now();
@@ -92,6 +105,12 @@ const TranslationInterface = () => {
         setAlternatives(searchResult.alternatives);
         setSources(searchResult.sources);
         setResponseTime(searchTime);
+        
+        // Set enhanced sentence processing data
+        setIsMultiWord(searchResult.isMultiWord || false);
+        setLocalResult(searchResult.localResult || null);
+        setOnlineResult(searchResult.onlineResult || null);
+        setWordBreakdown(searchResult.wordBreakdown || []);
         
         // Add to recent searches
         setRecentSearches(prev => {
@@ -107,6 +126,14 @@ const TranslationInterface = () => {
         });
         
         console.log('Search completed successfully from source:', searchResult.source);
+        
+        // Log enhanced results if available
+        if (searchResult.isMultiWord) {
+          console.log('Multi-word search results:');
+          console.log('- Local result:', searchResult.localResult ? 'Found' : 'Not found');
+          console.log('- Online result:', searchResult.onlineResult ? 'Found' : 'Not found');
+          console.log('- Word breakdown:', searchResult.wordBreakdown?.length || 0, 'words');
+        }
       } else {
         setCurrentTranslation(null);
         setSearchError(`No translation found for "${safeQuery}". Try a different word or phrase.`);
@@ -146,7 +173,10 @@ const TranslationInterface = () => {
   const getSourceLabel = (source: string) => {
     switch (source) {
       case 'local_dictionary': return 'Local Dictionary';
+      case 'local_dictionary_exact': return 'Local Dictionary (Exact)';
+      case 'local_sentence': return 'Local Dictionary (Sentence)';
       case 'online_search': return 'Online Search';
+      case 'online_sentence': return 'Online Search (Sentence)';
       case 'local_fallback': return 'Local Dictionary (Fallback)';
       case 'cache': return 'Cached Result';
       default: return source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -171,7 +201,7 @@ const TranslationInterface = () => {
         <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-green-100 px-3 py-2 rounded-full border border-blue-200 text-xs sm:text-sm">
           <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
           <span className="font-medium text-blue-700">
-            {hasApiKey ? 'Dictionary + Online' : 'Dictionary Only'}
+            {hasApiKey ? 'Dictionary + Online + Sentences' : 'Dictionary Only'}
           </span>
         </div>
       </div>
@@ -181,7 +211,7 @@ const TranslationInterface = () => {
         <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg mx-2 sm:mx-0">
           <p className="text-xs sm:text-sm text-green-700">
             <span className="font-semibold">{stats.totalEntries} entries loaded</span>
-            {hasApiKey && <span className="block sm:inline sm:ml-2">• Online search available</span>}
+            {hasApiKey && <span className="block sm:inline sm:ml-2">• Online search & sentence processing available</span>}
           </p>
         </div>
       )}
@@ -191,7 +221,7 @@ const TranslationInterface = () => {
         <SearchBar 
           onSearch={handleSearch}
           isLoading={isLoading}
-          placeholder="Enter English word..."
+          placeholder="Enter English word or sentence..."
         />
       </div>
 
@@ -221,6 +251,12 @@ const TranslationInterface = () => {
               <span>{(confidence * 100).toFixed(0)}% confidence</span>
               <span className="hidden sm:inline">•</span>
               <span className="hidden sm:inline">{responseTime.toFixed(1)}ms</span>
+              {isMultiWord && (
+                <>
+                  <span className="hidden sm:inline">•</span>
+                  <span className="text-purple-600 font-medium">Sentence Mode</span>
+                </>
+              )}
             </div>
           </div>
           
@@ -228,6 +264,11 @@ const TranslationInterface = () => {
             <TranslationResult 
               translation={currentTranslation}
               isLoading={isLoading}
+              isMultiWord={isMultiWord}
+              localResult={localResult}
+              onlineResult={onlineResult}
+              wordBreakdown={wordBreakdown}
+              source={searchSource}
             />
           </div>
 
