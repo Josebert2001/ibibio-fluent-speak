@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw } from 'lucide-react';
+import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw, TestTube } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
@@ -9,6 +9,7 @@ import RecentSearches from './RecentSearches';
 import DictionaryUpload from './DictionaryUpload';
 import ApiKeySetup from './ApiKeySetup';
 import EnhancedSearchInterface from './EnhancedSearchInterface';
+import SentenceSearchDemo from './SentenceSearchDemo';
 import { enhancedDictionaryService } from '../services/enhancedDictionaryService';
 import { dictionaryService } from '../services/dictionaryService';
 import { groqService } from '../services/groqService';
@@ -276,7 +277,7 @@ const TranslationInterface = () => {
 
       {/* Main Interface Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="dictionary" className="flex items-center space-x-2">
             <BookOpen className="w-4 h-4" />
             <span>English Dictionary</span>
@@ -285,10 +286,18 @@ const TranslationInterface = () => {
             <Target className="w-4 h-4" />
             <span>Ibibio Translation</span>
           </TabsTrigger>
+          <TabsTrigger value="sentence-search" className="flex items-center space-x-2">
+            <TestTube className="w-4 h-4" />
+            <span>Sentence Search</span>
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dictionary" className="space-y-6">
           <EnhancedSearchInterface />
+        </TabsContent>
+
+        <TabsContent value="sentence-search" className="space-y-6">
+          <SentenceSearchDemo />
         </TabsContent>
 
         <TabsContent value="ibibio" className="space-y-6">
