@@ -2,14 +2,11 @@
 
 A professional English to Ibibio translation platform with local dictionary search and AI-powered enhancements.
 
-## Project Info
-
-**URL**: https://lovable.dev/projects/48bcfcac-3500-478b-9e1f-2a5af7fde1b9
-
 ## Features
 
 - **Local Dictionary Search**: Fast, offline English to Ibibio translation using a comprehensive dictionary
 - **AI-Enhanced Translation**: Powered by Groq's Llama3 model for words not in the local dictionary
+- **Alternative Translations**: Multiple contextual variations with different formality levels
 - **Cultural Context**: Provides cultural background and context for translations
 - **Smart Caching**: Intelligent caching system for faster repeated searches
 - **Multi-Source Search**: Combines local dictionary, online sources, and AI translation
@@ -102,16 +99,10 @@ npm run dev
 3. If not found locally, AI-enhanced search will provide translations
 4. View detailed results including pronunciation, cultural context, and examples
 
-### API Configuration
-
-1. Click "API Configuration" to set up your Groq API key
-2. For production: Set `VITE_GROQ_API_KEY` environment variable
-3. For development: Enter API key in the configuration interface
-
 ### Features Available
 
 - **Without API Key**: Local dictionary search with 1000+ entries
-- **With API Key**: Enhanced AI translations, cultural context, pronunciation guides, and online search
+- **With API Key**: Enhanced AI translations, cultural context, pronunciation guides, alternative translations, and online search
 
 ## Architecture
 
@@ -157,7 +148,7 @@ npm run dev
 
 ### Automatic Deployment
 
-Simply open [Lovable](https://lovable.dev/projects/48bcfcac-3500-478b-9e1f-2a5af7fde1b9) and click on Share → Publish.
+Deploy using your preferred hosting platform with environment variable support.
 
 ### Manual Deployment
 
@@ -167,9 +158,7 @@ Simply open [Lovable](https://lovable.dev/projects/48bcfcac-3500-478b-9e1f-2a5af
 
 ### Custom Domain
 
-To connect a custom domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Configure custom domains through your hosting platform's domain management interface.
 
 ## License
 

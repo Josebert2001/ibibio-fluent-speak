@@ -6,7 +6,7 @@ import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
 import QuickActions from './QuickActions';
 import RecentSearches from './RecentSearches';
-import ApiKeySetup from './ApiKeySetup';
+import DictionaryUpload from './DictionaryUpload';
 import { enhancedDictionaryService } from '../services/enhancedDictionaryService';
 import { dictionaryService } from '../services/dictionaryService';
 import { parallelSearchService } from '../services/parallelSearchService';
@@ -19,7 +19,7 @@ const TranslationInterface = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [searchSource, setSearchSource] = useState<string>('dictionary');
   const [confidence, setConfidence] = useState(1.0);
-  const [showSetup, setShowSetup] = useState(false);
+  const [showDictionaryUpload, setShowDictionaryUpload] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [alternatives, setAlternatives] = useState<DictionaryEntry[]>([]);
   const [aiAlternatives, setAiAlternatives] = useState<AlternativeTranslation[]>([]);
@@ -37,7 +37,7 @@ const TranslationInterface = () => {
     // Initialize services on component mount
     const initializeServices = async () => {
       try {
-        console.log('Initializing production services...');
+        console.log('Initializing services...');
         
         // Initialize dictionary services
         await dictionaryService.loadDictionary();
@@ -46,7 +46,7 @@ const TranslationInterface = () => {
         // Initialize parallel search service for enhanced capabilities
         await parallelSearchService.initialize();
         
-        console.log('Production services initialized successfully');
+        console.log('Services initialized successfully');
       } catch (error) {
         console.error('Failed to initialize services:', error);
       }
@@ -111,7 +111,7 @@ const TranslationInterface = () => {
         console.log('Search completed successfully with', searchResult.aiAlternatives?.length || 0, 'AI alternatives');
       } else {
         setCurrentTranslation(null);
-        setSearchError(`No translation found for "${safeQuery}". Try a different word or check if you have an API key configured for enhanced search.`);
+        setSearchError(`No translation found for "${safeQuery}". Try a different word or phrase.`);
         setResponseTime(searchTime);
         console.log('No translation found');
       }
@@ -217,32 +217,21 @@ const TranslationInterface = () => {
         </div>
       )}
       
-      {/* Setup Toggle */}
+      {/* Dictionary Upload Toggle */}
       <div className="text-center">
         <Button 
           variant="outline" 
-          onClick={() => setShowSetup(!showSetup)}
+          onClick={() => setShowDictionaryUpload(!showDictionaryUpload)}
           className="mt-4"
         >
-          {showSetup ? 'Hide Configuration' : 'API Configuration'}
+          {showDictionaryUpload ? 'Hide Dictionary Upload' : 'Upload Custom Dictionary'}
         </Button>
       </div>
 
-      {/* API Key Configuration */}
-      {showSetup && (
+      {/* Dictionary Upload */}
+      {showDictionaryUpload && (
         <div className="space-y-6">
-          <ApiKeySetup />
-        </div>
-      )}
-
-      {/* API Key Status */}
-      {!hasApiKey && (
-        <div className="flex items-center space-x-2 text-blue-600 bg-blue-50 p-4 rounded-lg border border-blue-200">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <div className="text-sm">
-            <p className="font-medium">Local dictionary search is active</p>
-            <p>Configure Groq API key for enhanced AI-powered translations with multiple alternatives and contextual variations.</p>
-          </div>
+          <DictionaryUpload />
         </div>
       )}
 
@@ -251,6 +240,7 @@ const TranslationInterface = () => {
         <div className="text-center p-4 bg-green-50 rounded-lg">
           <p className="text-sm text-green-700">
             Dictionary loaded: <span className="font-semibold">{stats.totalEntries} entries</span>
+            {hasApiKey && <span className="ml-2">• AI-Enhanced Features Active</span>}
             {stats.categories.length > 0 && (
               <span className="ml-2">• Categories: {stats.categories.join(', ')}</span>
             )}

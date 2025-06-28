@@ -4,21 +4,15 @@ class GroqService {
   private baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
   getApiKey(): string | null {
-    // First check environment variable (production)
+    // Use environment variable for production
     const envKey = import.meta.env.VITE_GROQ_API_KEY;
     if (envKey) {
       return envKey;
     }
 
-    // Fallback to localStorage for development/testing
-    const localKey = localStorage.getItem('groq-api-key');
-    return localKey;
-  }
-
-  setApiKey(key: string) {
-    // Only save to localStorage for development/testing purposes
-    localStorage.setItem('groq-api-key', key);
-    console.log('API key saved for development. For production, set VITE_GROQ_API_KEY environment variable.');
+    // No fallback to localStorage - environment variable only
+    console.warn('VITE_GROQ_API_KEY environment variable not set. AI features will be disabled.');
+    return null;
   }
 
   private extractJsonFromText(text: string): string {
@@ -78,7 +72,7 @@ class GroqService {
   async translateWithAI(englishQuery: string): Promise<GroqResponse> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
-      throw new Error('Groq API key not configured. Please set VITE_GROQ_API_KEY environment variable or configure it in the setup section.');
+      throw new Error('Groq API key not configured. Please set VITE_GROQ_API_KEY environment variable.');
     }
 
     const prompt = `You are an expert English to Ibibio translator. Translate the following English word or phrase to Ibibio and provide detailed information including multiple alternative translations.
