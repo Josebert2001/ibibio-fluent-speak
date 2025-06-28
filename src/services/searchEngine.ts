@@ -27,7 +27,7 @@ class SearchEngine {
         return;
       }
 
-      const english = entry.english.toLowerCase().trim();
+      const english = String(entry.english).toLowerCase().trim();
       
       // Exact match index
       if (!this.index.exact.has(english)) {
@@ -81,7 +81,7 @@ class SearchEngine {
     const prefixMatches = this.index.prefix.get(normalizedQuery) || [];
     prefixMatches.forEach(entry => {
       if (!results.has(entry.id)) {
-        const confidence = normalizedQuery.length / entry.english.length;
+        const confidence = normalizedQuery.length / String(entry.english).length;
         results.set(entry.id, {
           entry,
           confidence: Math.min(0.9, confidence),
@@ -97,7 +97,7 @@ class SearchEngine {
         const wordMatches = this.index.words.get(word) || [];
         wordMatches.forEach(entry => {
           if (!results.has(entry.id)) {
-            const confidence = this.calculateWordMatchConfidence(normalizedQuery, entry.english.toLowerCase());
+            const confidence = this.calculateWordMatchConfidence(normalizedQuery, String(entry.english).toLowerCase());
             if (confidence > 0.3) {
               results.set(entry.id, {
                 entry,

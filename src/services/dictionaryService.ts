@@ -181,7 +181,7 @@ class DictionaryService {
     
     // First try exact match
     const exactMatch = this.dictionary.find(entry => 
-      entry.english && typeof entry.english === 'string' && entry.english.toLowerCase() === normalizedQuery
+      entry.english && typeof entry.english === 'string' && String(entry.english).toLowerCase() === normalizedQuery
     );
     
     if (exactMatch) return exactMatch;
@@ -189,8 +189,8 @@ class DictionaryService {
     // Try partial match
     const partialMatch = this.dictionary.find(entry => 
       entry.english && typeof entry.english === 'string' && (
-        entry.english.toLowerCase().includes(normalizedQuery) ||
-        normalizedQuery.includes(entry.english.toLowerCase())
+        String(entry.english).toLowerCase().includes(normalizedQuery) ||
+        normalizedQuery.includes(String(entry.english).toLowerCase())
       )
     );
     
@@ -204,7 +204,7 @@ class DictionaryService {
     if (!normalizedQuery) return null;
     
     return this.dictionary.find(entry => 
-      entry.english && typeof entry.english === 'string' && entry.english.toLowerCase() === normalizedQuery
+      entry.english && typeof entry.english === 'string' && String(entry.english).toLowerCase() === normalizedQuery
     ) || null;
   }
 
@@ -219,7 +219,7 @@ class DictionaryService {
     this.dictionary.forEach(entry => {
       if (!entry.english || typeof entry.english !== 'string') return;
       
-      const englishLower = entry.english.toLowerCase();
+      const englishLower = String(entry.english).toLowerCase();
       let confidence = 0;
 
       // Exact match
