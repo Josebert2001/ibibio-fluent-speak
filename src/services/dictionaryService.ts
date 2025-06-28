@@ -142,10 +142,23 @@ class DictionaryService {
         examples: [
           { english: 'The house is big', ibibio: 'Ufok oro akpa' }
         ]
+      },
+      {
+        id: 'god-1',
+        english: 'god',
+        ibibio: 'abasi',
+        meaning: 'The supreme deity; creator and sustainer of all life',
+        partOfSpeech: 'noun',
+        examples: [
+          { english: 'God is great', ibibio: 'Abasi akpa ntak' },
+          { english: 'We pray to God', ibibio: 'Nyenyin kere Abasi' }
+        ],
+        pronunciation: '/a.ba.si/',
+        cultural: 'Abasi is the supreme deity in Ibibio traditional religion, representing the creator and sustainer of all life. Abasi is considered omnipotent, omniscient, and benevolent.'
       }
     ];
     this.isLoaded = true;
-    console.log('Fallback dictionary created with basic entries');
+    console.log('Fallback dictionary created with basic entries including God/Abasi');
   }
 
   async saveDictionary(entries: DictionaryEntry[]): Promise<void> {

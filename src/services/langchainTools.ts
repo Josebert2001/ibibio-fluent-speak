@@ -19,7 +19,8 @@ export const createCulturalContextTool = () => {
           'thank you': 'Expressing gratitude is deeply embedded in Ibibio culture. "Sosongo" is used frequently and shows appreciation for both small and large gestures.',
           'good morning': 'Morning greetings in Ibibio culture often include blessings and well-wishes for the day ahead. They reflect the community-oriented nature of the society.',
           'big': 'Size and magnitude in Ibibio culture often relate to importance and respect. Large gatherings and celebrations are highly valued.',
-          'good': 'The concept of goodness in Ibibio culture is tied to moral character, community contribution, and spiritual alignment.'
+          'good': 'The concept of goodness in Ibibio culture is tied to moral character, community contribution, and spiritual alignment.',
+          'god': 'Abasi is the supreme deity in Ibibio traditional religion, representing the creator and sustainer of all life. Abasi is considered omnipotent, omniscient, and benevolent. Traditional Ibibio spirituality centers around reverence for Abasi, ancestors, and nature spirits. The concept encompasses both traditional beliefs and modern Christian interpretations among the Ibibio people.'
         };
 
         const context = culturalContexts[input.toLowerCase()] || 
@@ -59,7 +60,8 @@ export const createPronunciationTool = () => {
           'afiak': '/a.fi.ak/',
           'sosongo': '/so.so.ŋo/',
           'emenere': '/e.me.ne.re/',
-          'akpa': '/ak.pa/'
+          'akpa': '/ak.pa/',
+          'abasi': '/a.ba.si/'
         };
 
         const pronunciation = pronunciations[input.toLowerCase()] || 
@@ -126,6 +128,11 @@ export const createExampleSentenceTool = () => {
           'thank you': [
             { english: 'Thank you very much.', ibibio: 'Sosongo ntak.' },
             { english: 'Thank you for your help.', ibibio: 'Sosongo mme ikpong afo.' }
+          ],
+          'god': [
+            { english: 'God is great.', ibibio: 'Abasi akpa ntak.' },
+            { english: 'We pray to God.', ibibio: 'Nyenyin kere Abasi.' },
+            { english: 'God bless you.', ibibio: 'Abasi akpa afo.' }
           ]
         };
 
@@ -176,7 +183,8 @@ export const createComprehensiveSearchTool = () => {
           'food': { primary: 'ndidia', alternatives: ['meal', 'sustenance'] },
           'house': { primary: 'ufok', alternatives: ['home', 'dwelling'] },
           'good': { primary: 'afiak', alternatives: ['nice', 'excellent'] },
-          'thank you': { primary: 'sosongo', alternatives: ['gratitude', 'appreciation'] }
+          'thank you': { primary: 'sosongo', alternatives: ['gratitude', 'appreciation'] },
+          'god': { primary: 'abasi', alternatives: ['deity', 'supreme being', 'creator'] }
         };
 
         const result = translations[input.toLowerCase()];
