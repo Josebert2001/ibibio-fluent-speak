@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TrendingUp, Clock, Target, BookOpen } from 'lucide-react';
+import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
@@ -38,15 +38,20 @@ const TranslationInterface = () => {
     // Load dictionary on component mount
     const initializeDictionary = async () => {
       try {
-        console.log('Initializing dictionary services...');
+        console.log('=== INITIALIZING DICTIONARY ===');
+        
+        // Force reload dictionary
         await dictionaryService.loadDictionary();
         await enhancedDictionaryService.loadDictionary();
         
-        // Verify God/Abasi is in the dictionary
-        const godEntry = dictionaryService.search('god');
-        console.log('God entry found:', godEntry);
+        // Debug the dictionary content
+        dictionaryService.debugDictionary('god');
         
-        console.log('Dictionary initialized successfully');
+        // Test search for God specifically
+        const godTest = dictionaryService.search('god');
+        console.log('God search test result:', godTest);
+        
+        console.log('Dictionary initialization completed');
       } catch (error) {
         console.error('Failed to initialize dictionary:', error);
       }
@@ -88,6 +93,9 @@ const TranslationInterface = () => {
         await dictionaryService.loadDictionary();
       }
       
+      // Debug dictionary content before search
+      dictionaryService.debugDictionary(safeQuery);
+      
       // Try direct search in basic dictionary service first
       let result = dictionaryService.search(safeQuery);
       let source = 'basic_dictionary';
@@ -97,23 +105,23 @@ const TranslationInterface = () => {
       console.log('Basic dictionary result:', result);
       
       if (result) {
-        console.log('Found in basic dictionary:', result);
+        console.log('✅ Found in basic dictionary:', result);
         source = 'basic_dictionary';
       } else {
-        console.log('Not found in basic dictionary, trying enhanced...');
+        console.log('❌ Not found in basic dictionary, trying enhanced...');
         
         // Try enhanced dictionary service
         result = enhancedDictionaryService.search(safeQuery);
         
         if (result) {
-          console.log('Found in enhanced dictionary:', result);
+          console.log('✅ Found in enhanced dictionary:', result);
           source = 'enhanced_dictionary';
           
           // Get alternatives from fuzzy search
           const fuzzyResults = enhancedDictionaryService.searchFuzzy(safeQuery, 5);
           alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
         } else {
-          console.log('Not found in enhanced dictionary either, trying fuzzy search...');
+          console.log('❌ Not found in enhanced dictionary either, trying fuzzy search...');
           
           // Try fuzzy search as last resort
           const fuzzyResults = dictionaryService.searchFuzzy(safeQuery, 5);
@@ -122,18 +130,32 @@ const TranslationInterface = () => {
             searchConfidence = fuzzyResults[0].confidence;
             source = 'fuzzy_search';
             alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
-            console.log('Found via fuzzy search:', result);
+            console.log('✅ Found via fuzzy search:', result);
           } else {
-            console.log('No fuzzy results found');
+            console.log('❌ No fuzzy results found');
             
             // Debug: Let's see what's actually in the dictionary
             const allEntries = dictionaryService.getAllEntries();
             console.log('Total dictionary entries:', allEntries.length);
-            console.log('Sample entries:', allEntries.slice(0, 5).map(e => ({ english: e.english, ibibio: e.ibibio })));
+            console.log('Sample entries:', allEntries.slice(0, 10).map(e => ({ 
+              english: e.english, 
+              ibibio: e.ibibio,
+              id: e.id 
+            })));
             
             // Check if God is specifically in there
-            const godEntries = allEntries.filter(e => e.english && typeof e.english === 'string' && e.english.toLowerCase().includes('god'));
-            console.log('God-related entries:', godEntries);
+            const godEntries = allEntries.filter(e => 
+              e.english && typeof e.english === 'string' && 
+              e.english.toLowerCase().includes('god')
+            );
+            console.log('God-related entries found:', godEntries);
+            
+            // Check exact match manually
+            const exactGodMatch = allEntries.find(e => 
+              e.english && typeof e.english === 'string' && 
+              e.english.toLowerCase() === 'god'
+            );
+            console.log('Exact God match:', exactGodMatch);
           }
         }
       }
@@ -162,12 +184,12 @@ const TranslationInterface = () => {
           )].slice(0, 5);
         });
         
-        console.log('Search completed successfully');
+        console.log('✅ Search completed successfully');
       } else {
         setCurrentTranslation(null);
-        setSearchError(`No translation found for "${safeQuery}". The word may not be in the dictionary yet.`);
+        setSearchError(`No translation found for "${safeQuery}". The word may not be in the dictionary yet. Try uploading a dictionary file or check the spelling.`);
         setResponseTime(searchTime);
-        console.log('No translation found anywhere');
+        console.log('❌ No translation found anywhere');
       }
 
     } catch (error) {
@@ -175,6 +197,34 @@ const TranslationInterface = () => {
       setCurrentTranslation(null);
       setSearchError('An unexpected error occurred during search.');
       setResponseTime(performance.now() - startTime);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const forceReloadDictionary = async () => {
+    setIsLoading(true);
+    try {
+      // Clear localStorage to force fresh load
+      localStorage.removeItem('ibibio-dictionary');
+      
+      // Reload dictionary
+      await dictionaryService.loadDictionary();
+      await enhancedDictionaryService.loadDictionary();
+      
+      // Test God search
+      const godTest = dictionaryService.search('god');
+      console.log('God search after reload:', godTest);
+      
+      if (godTest) {
+        setSearchError(null);
+        alert('Dictionary reloaded successfully! God/Abasi entry found.');
+      } else {
+        setSearchError('Dictionary reloaded but God/Abasi entry still not found. Please check your dictionary file.');
+      }
+    } catch (error) {
+      console.error('Failed to reload dictionary:', error);
+      setSearchError('Failed to reload dictionary.');
     } finally {
       setIsLoading(false);
     }
@@ -280,13 +330,23 @@ const TranslationInterface = () => {
           )}
           
           {/* Setup Toggle */}
-          <div className="text-center">
+          <div className="text-center space-x-4">
             <Button 
               variant="outline" 
               onClick={() => setShowSetup(!showSetup)}
               className="mt-4"
             >
               {showSetup ? 'Hide Setup' : 'Setup Dictionary & API'}
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              onClick={forceReloadDictionary}
+              disabled={isLoading}
+              className="mt-4"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+              Reload Dictionary
             </Button>
           </div>
 

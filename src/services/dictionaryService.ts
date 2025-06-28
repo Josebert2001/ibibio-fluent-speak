@@ -9,9 +9,15 @@ class DictionaryService {
       // First try to load from localStorage
       const stored = localStorage.getItem('ibibio-dictionary');
       if (stored) {
-        this.dictionary = JSON.parse(stored);
+        const data = JSON.parse(stored);
+        // Transform stored data to ensure correct format
+        this.dictionary = this.transformDictionaryData(data);
         this.isLoaded = true;
         console.log(`Dictionary loaded from storage with ${this.dictionary.length} entries`);
+        
+        // Debug: Check if God is in the loaded dictionary
+        const godEntry = this.dictionary.find(e => e.english && e.english.toLowerCase() === 'god');
+        console.log('God entry in loaded dictionary:', godEntry);
         return;
       }
 
@@ -19,25 +25,21 @@ class DictionaryService {
       try {
         const response = await fetch('/src/lib/ibibio_dictionary.json');
         if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data) && data.length > 0) {
+          const rawData = await response.json();
+          console.log('Raw dictionary data sample:', rawData.slice(0, 3));
+          
+          if (Array.isArray(rawData) && rawData.length > 0) {
             // Transform the data to match our expected format
-            this.dictionary = data.map((item, index) => ({
-              id: item.id || `entry-${index}`,
-              english: item.english || item.english_definition || '',
-              ibibio: item.ibibio || item.ibibio_word || '',
-              meaning: item.meaning || item.english_definition || '',
-              partOfSpeech: item.partOfSpeech || item.part_of_speech || item['Part of Speech'] || 'unknown',
-              examples: item.examples || [],
-              pronunciation: item.pronunciation || item.Pronunciation || '',
-              cultural: item.cultural || item.Cultural || '',
-              category: item.category || item.Category || ''
-            })).filter(entry => entry.english && entry.ibibio); // Only keep entries with both fields
-
+            this.dictionary = this.transformDictionaryData(rawData);
             this.isLoaded = true;
-            // Save to localStorage for future use
+            
+            // Save transformed data to localStorage for future use
             localStorage.setItem('ibibio-dictionary', JSON.stringify(this.dictionary));
             console.log(`Dictionary loaded from ibibio_dictionary.json with ${this.dictionary.length} entries`);
+            
+            // Debug: Check if God is in the loaded dictionary
+            const godEntry = this.dictionary.find(e => e.english && e.english.toLowerCase() === 'god');
+            console.log('God entry after transformation:', godEntry);
             return;
           }
         }
@@ -51,6 +53,48 @@ class DictionaryService {
       console.error('Error loading dictionary:', error);
       this.createFallbackDictionary();
     }
+  }
+
+  private transformDictionaryData(rawData: any[]): DictionaryEntry[] {
+    return rawData.map((item, index) => {
+      // Handle multiple possible field name variations
+      const english = item.english || item.English || item.english_definition || item.english_word || item.word || '';
+      const ibibio = item.ibibio || item.Ibibio || item.ibibio_word || item.ibibio_translation || item.translation || '';
+      const meaning = item.meaning || item.Meaning || item.definition || item.english_definition || english || '';
+      
+      // Create the transformed entry
+      const entry: DictionaryEntry = {
+        id: item.id || `entry-${index}`,
+        english: String(english).trim(),
+        ibibio: String(ibibio).trim(),
+        meaning: String(meaning).trim(),
+        partOfSpeech: item.partOfSpeech || item.part_of_speech || item['Part of Speech'] || item.pos || 'unknown',
+        examples: this.transformExamples(item.examples),
+        pronunciation: item.pronunciation || item.Pronunciation || item.phonetic || '',
+        cultural: item.cultural || item.Cultural || item.context || item.cultural_context || '',
+        category: item.category || item.Category || item.type || ''
+      };
+
+      return entry;
+    }).filter(entry => {
+      // Only keep entries that have both english and ibibio fields
+      const hasEnglish = entry.english && entry.english.length > 0;
+      const hasIbibio = entry.ibibio && entry.ibibio.length > 0;
+      return hasEnglish && hasIbibio;
+    });
+  }
+
+  private transformExamples(examples: any): Array<{ english: string; ibibio: string }> {
+    if (!examples) return [];
+    
+    if (Array.isArray(examples)) {
+      return examples.map(ex => ({
+        english: ex.english || ex.English || ex.example || String(ex),
+        ibibio: ex.ibibio || ex.Ibibio || ex.translation || ''
+      })).filter(ex => ex.english);
+    }
+    
+    return [];
   }
 
   private createFallbackDictionary(): void {
@@ -191,21 +235,33 @@ class DictionaryService {
     const normalizedQuery = (query || '').toLowerCase().trim();
     if (!normalizedQuery) return null;
     
+    console.log(`Searching for: "${normalizedQuery}" in ${this.dictionary.length} entries`);
+    
     // First try exact match
-    const exactMatch = this.dictionary.find(entry => 
-      entry.english && typeof entry.english === 'string' && String(entry.english).toLowerCase() === normalizedQuery
-    );
+    const exactMatch = this.dictionary.find(entry => {
+      if (!entry.english || typeof entry.english !== 'string') return false;
+      const entryEnglish = String(entry.english).toLowerCase().trim();
+      const isMatch = entryEnglish === normalizedQuery;
+      if (isMatch) {
+        console.log(`Exact match found: ${entry.english} -> ${entry.ibibio}`);
+      }
+      return isMatch;
+    });
     
     if (exactMatch) return exactMatch;
     
     // Try partial match
-    const partialMatch = this.dictionary.find(entry => 
-      entry.english && typeof entry.english === 'string' && (
-        String(entry.english).toLowerCase().includes(normalizedQuery) ||
-        normalizedQuery.includes(String(entry.english).toLowerCase())
-      )
-    );
+    const partialMatch = this.dictionary.find(entry => {
+      if (!entry.english || typeof entry.english !== 'string') return false;
+      const entryEnglish = String(entry.english).toLowerCase().trim();
+      const isMatch = entryEnglish.includes(normalizedQuery) || normalizedQuery.includes(entryEnglish);
+      if (isMatch) {
+        console.log(`Partial match found: ${entry.english} -> ${entry.ibibio}`);
+      }
+      return isMatch;
+    });
     
+    console.log(`No match found for: "${normalizedQuery}"`);
     return partialMatch || null;
   }
 
@@ -293,6 +349,32 @@ class DictionaryService {
       isLoaded: this.isLoaded,
       categories: [...new Set(this.dictionary.map(e => e.category).filter(Boolean))]
     };
+  }
+
+  // Debug method to inspect dictionary content
+  debugDictionary(searchTerm?: string) {
+    console.log('=== DICTIONARY DEBUG ===');
+    console.log('Total entries:', this.dictionary.length);
+    console.log('Is loaded:', this.isLoaded);
+    
+    if (searchTerm) {
+      const matches = this.dictionary.filter(entry => 
+        entry.english && entry.english.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      console.log(`Entries containing "${searchTerm}":`, matches);
+    } else {
+      console.log('Sample entries:', this.dictionary.slice(0, 5).map(e => ({
+        english: e.english,
+        ibibio: e.ibibio,
+        meaning: e.meaning
+      })));
+    }
+    
+    // Check specifically for God
+    const godEntries = this.dictionary.filter(entry => 
+      entry.english && entry.english.toLowerCase().includes('god')
+    );
+    console.log('God-related entries:', godEntries);
   }
 }
 
