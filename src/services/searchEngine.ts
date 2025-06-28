@@ -22,6 +22,11 @@ class SearchEngine {
     this.index.words.clear();
 
     entries.forEach(entry => {
+      // Validate that entry.english exists and is a string
+      if (!entry.english || typeof entry.english !== 'string') {
+        return;
+      }
+
       const english = entry.english.toLowerCase().trim();
       
       // Exact match index
