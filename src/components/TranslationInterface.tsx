@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw, Sparkles } from 'lucide-react';
+import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
@@ -20,6 +20,7 @@ const TranslationInterface = () => {
   const [searchSource, setSearchSource] = useState<string>('dictionary');
   const [confidence, setConfidence] = useState(1.0);
   const [showDictionaryUpload, setShowDictionaryUpload] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [alternatives, setAlternatives] = useState<DictionaryEntry[]>([]);
   const [sources, setSources] = useState<string[]>([]);
@@ -156,108 +157,54 @@ const TranslationInterface = () => {
   const hasApiKey = !!groqService.getApiKey();
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Hero Section */}
-      <div className="text-center space-y-4 py-8">
-        <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          Ibibio Translation Platform
+    <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 space-y-4 sm:space-y-6 lg:space-y-8">
+      {/* Hero Section - Mobile Optimized */}
+      <div className="text-center space-y-3 sm:space-y-4 py-4 sm:py-6 lg:py-8">
+        <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
+          Ibibio Translator
         </h2>
-        <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Professional English to Ibibio translation with local dictionary and online search when needed.
+        <p className="text-base sm:text-lg lg:text-xl text-gray-600 max-w-2xl mx-auto px-2">
+          English to Ibibio translation with local dictionary and online search
         </p>
         
-        {/* Search Mode Badge */}
-        <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-green-100 px-4 py-2 rounded-full border border-blue-200">
-          <BookOpen className="w-4 h-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-700">
-            Local Dictionary + {hasApiKey ? 'Online Search' : 'Local Only'}
+        {/* Search Mode Badge - Mobile Friendly */}
+        <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-green-100 px-3 py-2 rounded-full border border-blue-200 text-xs sm:text-sm">
+          <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
+          <span className="font-medium text-blue-700">
+            {hasApiKey ? 'Dictionary + Online' : 'Dictionary Only'}
           </span>
         </div>
       </div>
 
-      {/* Performance Metrics */}
-      {performanceMetrics && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-          <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-gray-200">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="w-4 h-4 text-green-600" />
-              <span className="text-sm font-medium text-gray-700">Success Rate</span>
-            </div>
-            <p className="text-2xl font-bold text-green-600">
-              {performanceMetrics.successRate.toFixed(1)}%
-            </p>
-          </div>
-          
-          <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-gray-200">
-            <div className="flex items-center space-x-2">
-              <Clock className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-gray-700">Avg Response</span>
-            </div>
-            <p className="text-2xl font-bold text-blue-600">
-              {performanceMetrics.averageResponseTime.toFixed(1)}ms
-            </p>
-          </div>
-          
-          <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-gray-200">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={runPerformanceTest}
-              disabled={isLoading}
-              className="w-full"
-            >
-              Run Test
-            </Button>
-          </div>
-        </div>
-      )}
-      
-      {/* Dictionary Upload Toggle */}
-      <div className="text-center">
-        <Button 
-          variant="outline" 
-          onClick={() => setShowDictionaryUpload(!showDictionaryUpload)}
-          className="mt-4"
-        >
-          {showDictionaryUpload ? 'Hide Dictionary Upload' : 'Upload Custom Dictionary'}
-        </Button>
-      </div>
-
-      {/* Dictionary Upload */}
-      {showDictionaryUpload && (
-        <div className="space-y-6">
-          <DictionaryUpload />
-        </div>
-      )}
-
-      {/* Dictionary Status */}
+      {/* Dictionary Status - Mobile Optimized */}
       {stats.isLoaded && (
-        <div className="text-center p-4 bg-green-50 rounded-lg">
-          <p className="text-sm text-green-700">
-            Dictionary loaded: <span className="font-semibold">{stats.totalEntries} entries</span>
-            {hasApiKey && <span className="ml-2">• Online Search Available</span>}
-            {stats.categories.length > 0 && (
-              <span className="ml-2">• Categories: {stats.categories.join(', ')}</span>
-            )}
+        <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg mx-2 sm:mx-0">
+          <p className="text-xs sm:text-sm text-green-700">
+            <span className="font-semibold">{stats.totalEntries} entries loaded</span>
+            {hasApiKey && <span className="block sm:inline sm:ml-2">• Online search available</span>}
           </p>
         </div>
       )}
 
       {/* Search Interface */}
-      <SearchBar 
-        onSearch={handleSearch}
-        isLoading={isLoading}
-        placeholder="Enter English word or phrase to translate to Ibibio..."
-      />
+      <div className="px-2 sm:px-0">
+        <SearchBar 
+          onSearch={handleSearch}
+          isLoading={isLoading}
+          placeholder="Enter English word..."
+        />
+      </div>
 
-      {/* Quick Actions */}
-      <QuickActions onQuickSearch={handleSearch} />
+      {/* Quick Actions - Mobile Optimized */}
+      <div className="px-2 sm:px-0">
+        <QuickActions onQuickSearch={handleSearch} />
+      </div>
 
-      {/* Search Error */}
+      {/* Search Error - Mobile Friendly */}
       {searchError && (
-        <div className="flex items-center space-x-2 text-red-600 bg-red-50 p-4 rounded-lg border border-red-200">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <div className="text-sm">
+        <div className="flex items-start space-x-2 text-red-600 bg-red-50 p-3 sm:p-4 rounded-lg border border-red-200 mx-2 sm:mx-0">
+          <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 mt-0.5" />
+          <div className="text-xs sm:text-sm">
             <p>{searchError}</p>
           </div>
         </div>
@@ -265,43 +212,37 @@ const TranslationInterface = () => {
 
       {/* Translation Result */}
       {currentTranslation && (
-        <div className="space-y-4">
-          <div className="text-center">
-            <div className="inline-flex items-center space-x-4 text-xs bg-gray-100 px-4 py-2 rounded-full">
-              <span>Source: {getSourceLabel(searchSource)}</span>
-              <span>•</span>
-              <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
-              <span>•</span>
-              <span>Response: {responseTime.toFixed(1)}ms</span>
-              {sources.length > 0 && (
-                <>
-                  <span>•</span>
-                  <span>Sources: {sources.join(', ')}</span>
-                </>
-              )}
+        <div className="space-y-3 sm:space-y-4">
+          {/* Result Metadata - Mobile Optimized */}
+          <div className="text-center px-2 sm:px-0">
+            <div className="inline-flex flex-wrap items-center justify-center gap-2 text-xs bg-gray-100 px-3 py-2 rounded-full">
+              <span>{getSourceLabel(searchSource)}</span>
+              <span className="hidden sm:inline">•</span>
+              <span>{(confidence * 100).toFixed(0)}% confidence</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">{responseTime.toFixed(1)}ms</span>
             </div>
           </div>
           
-          <TranslationResult 
-            translation={currentTranslation}
-            isLoading={isLoading}
-          />
+          <div className="px-2 sm:px-0">
+            <TranslationResult 
+              translation={currentTranslation}
+              isLoading={isLoading}
+            />
+          </div>
 
-          {/* Dictionary Alternative Results */}
+          {/* Dictionary Alternative Results - Mobile Optimized */}
           {alternatives.length > 0 && (
-            <div className="mt-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Dictionary Alternatives</h3>
-              <div className="grid gap-3">
-                {alternatives.map((alt, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <div className="flex items-center space-x-3">
-                      <span className="font-medium text-blue-700">{alt.ibibio}</span>
-                      <span className="text-gray-600">•</span>
-                      <span className="text-gray-700">{alt.meaning}</span>
+            <div className="mt-4 sm:mt-6 px-2 sm:px-0">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">Similar Words</h3>
+              <div className="grid gap-2 sm:gap-3">
+                {alternatives.slice(0, 3).map((alt, index) => (
+                  <div key={index} className="bg-gray-50 rounded-lg p-3 sm:p-4 border border-gray-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-3">
+                      <span className="font-medium text-blue-700 text-sm sm:text-base">{alt.ibibio}</span>
+                      <span className="hidden sm:inline text-gray-600">•</span>
+                      <span className="text-gray-700 text-xs sm:text-sm">{alt.meaning}</span>
                     </div>
-                    {alt.cultural && (
-                      <p className="text-xs text-gray-500 mt-1">{alt.cultural}</p>
-                    )}
                   </div>
                 ))}
               </div>
@@ -310,13 +251,95 @@ const TranslationInterface = () => {
         </div>
       )}
 
-      {/* Recent Searches */}
+      {/* Recent Searches - Mobile Optimized */}
       {!currentTranslation && recentSearches.length > 0 && (
-        <RecentSearches 
-          searches={recentSearches}
-          onSearchSelect={handleSearch}
-        />
+        <div className="px-2 sm:px-0">
+          <RecentSearches 
+            searches={recentSearches}
+            onSearchSelect={handleSearch}
+          />
+        </div>
       )}
+
+      {/* Advanced Options - Collapsible on Mobile */}
+      <div className="px-2 sm:px-0">
+        <Button 
+          variant="outline" 
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="w-full sm:w-auto flex items-center justify-center space-x-2"
+          size="sm"
+        >
+          <span>Advanced Options</span>
+          {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        </Button>
+
+        {showAdvanced && (
+          <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
+            {/* Performance Metrics - Mobile Layout */}
+            {performanceMetrics && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                  <div className="flex items-center justify-center space-x-1 mb-1">
+                    <TrendingUp className="w-3 h-3 text-green-600" />
+                    <span className="text-xs font-medium text-gray-700">Success</span>
+                  </div>
+                  <p className="text-lg font-bold text-green-600">
+                    {performanceMetrics.successRate.toFixed(0)}%
+                  </p>
+                </div>
+                
+                <div className="bg-white rounded-lg p-3 border border-gray-200 text-center">
+                  <div className="flex items-center justify-center space-x-1 mb-1">
+                    <Clock className="w-3 h-3 text-blue-600" />
+                    <span className="text-xs font-medium text-gray-700">Speed</span>
+                  </div>
+                  <p className="text-lg font-bold text-blue-600">
+                    {performanceMetrics.averageResponseTime.toFixed(0)}ms
+                  </p>
+                </div>
+                
+                <div className="col-span-2 sm:col-span-1 bg-white rounded-lg p-3 border border-gray-200">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={runPerformanceTest}
+                    disabled={isLoading}
+                    className="w-full text-xs"
+                  >
+                    Run Test
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Dictionary Upload Toggle */}
+            <div className="text-center">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowDictionaryUpload(!showDictionaryUpload)}
+                size="sm"
+                className="w-full sm:w-auto"
+              >
+                {showDictionaryUpload ? 'Hide Upload' : 'Upload Dictionary'}
+              </Button>
+            </div>
+
+            {/* Dictionary Upload */}
+            {showDictionaryUpload && (
+              <div className="space-y-4">
+                <DictionaryUpload />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Footer Credit - Mobile Friendly */}
+      <div className="text-center py-4 px-2 sm:px-0">
+        <p className="text-xs text-gray-500">
+          Created by <span className="font-semibold text-blue-600">JR-Solvy</span>
+        </p>
+      </div>
     </div>
   );
 };
