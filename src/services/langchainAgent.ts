@@ -15,14 +15,17 @@ import { cacheService } from './cacheService';
 class LangchainAgentService {
   private agent: AgentExecutor | null = null;
   private isInitialized = false;
+  private initializationFailed = false;
 
   async initialize(): Promise<void> {
-    if (this.isInitialized) return;
+    if (this.isInitialized || this.initializationFailed) return;
 
     try {
       const apiKey = groqService.getApiKey();
       if (!apiKey) {
-        throw new Error('Groq API key not available');
+        console.warn('Groq API key not available. Langchain agent will be disabled. Online search features will not be available.');
+        this.initializationFailed = true;
+        return; // Don't throw error, just mark as failed and continue
       }
 
       // Use Groq API with OpenAI-compatible endpoint - optimized settings
@@ -65,7 +68,8 @@ class LangchainAgentService {
       console.log('Enhanced Langchain agent initialized successfully with', tools.length, 'tools');
     } catch (error) {
       console.error('Failed to initialize Langchain agent:', error);
-      throw error;
+      this.initializationFailed = true;
+      // Don't throw error - just mark as failed and continue without agent
     }
   }
 
@@ -74,6 +78,16 @@ class LangchainAgentService {
     source: string;
     confidence: number;
   }> {
+    // Check if agent is available
+    if (this.initializationFailed || !this.isInitialized) {
+      console.warn('Langchain agent not available. Skipping agent search.');
+      return {
+        result: null,
+        source: 'agent_unavailable',
+        confidence: 0
+      };
+    }
+
     // Check cache first
     const cached = cacheService.get(query);
     if (cached) {
@@ -85,12 +99,13 @@ class LangchainAgentService {
       };
     }
 
-    if (!this.isInitialized) {
-      await this.initialize();
-    }
-
     if (!this.agent) {
-      throw new Error('Agent not initialized');
+      console.warn('Agent not initialized. Skipping agent search.');
+      return {
+        result: null,
+        source: 'agent_not_initialized',
+        confidence: 0
+      };
     }
 
     try {
@@ -183,16 +198,25 @@ Focus on accuracy and speed. Return only the JSON object.`;
       };
     } catch (error) {
       console.error('Enhanced Langchain agent search error:', error);
-      throw error;
+      return {
+        result: null,
+        source: 'langchain-error',
+        confidence: 0
+      };
     }
   }
 
   getStats() {
     return {
       isInitialized: this.isInitialized,
+      initializationFailed: this.initializationFailed,
       toolsAvailable: this.isInitialized ? 5 : 0,
       cacheStats: cacheService.getStats()
     };
+  }
+
+  isAvailable(): boolean {
+    return this.isInitialized && !this.initializationFailed;
   }
 }
 

@@ -1,8 +1,8 @@
 import { groqService } from './groqService';
 import { dictionaryService } from './dictionaryService';
-import { langchainAgentService } from './langchainAgent';
 import { cacheManager } from './cacheManager';
 import { searchEngine } from './searchEngine';
+import { langchainAgentService } from './langchainAgent';
 import { DictionaryEntry } from '../types/dictionary';
 
 interface ParallelSearchResult {
@@ -30,12 +30,12 @@ class ParallelSearchService {
         searchEngine.buildIndex(entries);
       }
 
-      // Initialize Langchain agent for online searches
+      // Try to initialize Langchain agent (non-blocking)
       try {
         await langchainAgentService.initialize();
-        console.log('Langchain agent initialized for online searches');
       } catch (agentError) {
-        console.warn('Langchain agent initialization failed, will use fallback online search:', agentError);
+        console.warn('Langchain agent initialization failed, continuing without agent:', agentError);
+        // Don't throw - continue initialization without agent
       }
 
       this.isInitialized = true;
@@ -70,27 +70,26 @@ class ParallelSearchService {
       const words = normalizedQuery.split(/\s+/).filter(word => word.length > 0);
       
       if (words.length > 1) {
-        console.log(`Processing sentence with ${words.length} words: "${query}"`);
+        console.log(`Processing sentence with ${words.length} words:`, words);
         
-        // Try to translate sentence word by word using local dictionary
-        const sentenceResult = await this.translateSentenceLocally(words, normalizedQuery);
-        if (sentenceResult) {
+        // Try local sentence translation first
+        const sentenceResult = await this.translateSentenceLocally(words);
+        if (sentenceResult.result) {
           const result: ParallelSearchResult = {
-            result: sentenceResult.entry,
+            result: sentenceResult.result,
             confidence: sentenceResult.confidence,
             source: 'local_sentence',
-            alternatives: sentenceResult.alternatives,
+            alternatives: [],
             sources: ['local_dictionary'],
             responseTime: Date.now() - startTime
           };
-
-          // Cache the result
+          
           cacheManager.set(normalizedQuery, result, result.source);
           return result;
         }
       }
 
-      // Step 2: Search local dictionary for the entire phrase
+      // Step 2: Search local dictionary for exact phrase
       const localResult = await this.searchLocal(normalizedQuery);
       
       if (localResult.result) {
@@ -109,7 +108,7 @@ class ParallelSearchService {
         return result;
       }
 
-      // Step 3: Not found locally - try online search with Langchain agent
+      // Step 3: Not found locally - try online search with AI
       const apiKey = groqService.getApiKey();
       if (!apiKey) {
         // No API key available
@@ -123,47 +122,51 @@ class ParallelSearchService {
         };
       }
 
-      console.log(`"${query}" not found in local dictionary. Searching online with AI agent...`);
+      console.log(`"${query}" not found in local dictionary. Searching online...`);
       
-      try {
-        const onlineResult = await this.searchOnlineWithAgent(normalizedQuery);
-        
-        if (onlineResult) {
-          const result: ParallelSearchResult = {
-            result: onlineResult.result,
-            confidence: onlineResult.confidence,
-            source: onlineResult.source,
-            alternatives: [],
-            sources: [onlineResult.source],
-            responseTime: Date.now() - startTime
-          };
-
-          // Cache the validated online result
-          cacheManager.set(normalizedQuery, result, result.source);
-          return result;
-        }
-      } catch (onlineError) {
-        console.error('Online search with agent failed:', onlineError);
-        
-        // Fallback to direct API call if agent fails
+      // Step 4: Try Langchain agent first (if available)
+      if (langchainAgentService.isAvailable()) {
         try {
-          const fallbackResult = await this.searchOnlineFallback(normalizedQuery);
-          if (fallbackResult) {
+          const agentResult = await langchainAgentService.searchWithAgent(normalizedQuery);
+          
+          if (agentResult.result) {
             const result: ParallelSearchResult = {
-              result: fallbackResult,
-              confidence: 65, // Lower confidence for fallback
-              source: 'online_fallback',
+              result: agentResult.result,
+              confidence: agentResult.confidence * 100,
+              source: agentResult.source,
               alternatives: [],
-              sources: ['online_fallback'],
+              sources: [agentResult.source],
               responseTime: Date.now() - startTime
             };
 
             cacheManager.set(normalizedQuery, result, result.source);
             return result;
           }
-        } catch (fallbackError) {
-          console.error('Fallback online search also failed:', fallbackError);
+        } catch (agentError) {
+          console.warn('Langchain agent search failed, trying fallback:', agentError);
         }
+      }
+      
+      // Step 5: Fallback to direct online search
+      try {
+        const onlineResult = await this.searchOnline(normalizedQuery);
+        
+        if (onlineResult) {
+          const result: ParallelSearchResult = {
+            result: onlineResult,
+            confidence: 75, // Online results get 75% confidence
+            source: 'online_search',
+            alternatives: [],
+            sources: ['online_search'],
+            responseTime: Date.now() - startTime
+          };
+
+          // Cache the online result
+          cacheManager.set(normalizedQuery, result, result.source);
+          return result;
+        }
+      } catch (onlineError) {
+        console.error('Online search failed:', onlineError);
       }
 
       // No results found anywhere
@@ -192,95 +195,72 @@ class ParallelSearchService {
     }
   }
 
-  private async translateSentenceLocally(words: string[], originalQuery: string): Promise<{
-    entry: DictionaryEntry;
+  private async translateSentenceLocally(words: string[]): Promise<{
+    result: DictionaryEntry | null;
     confidence: number;
-    alternatives: DictionaryEntry[];
-  } | null> {
-    const wordTranslations: Array<{
-      english: string;
-      ibibio: string;
-      meaning: string;
-      found: boolean;
-    }> = [];
+  }> {
+    const translations: string[] = [];
+    const foundWords: string[] = [];
+    const notFoundWords: string[] = [];
 
-    let totalWordsFound = 0;
-
-    // Check each word in the local dictionary
+    // Look up each word individually
     for (const word of words) {
-      const exactMatch = dictionaryService.searchExact(word);
-      
-      if (exactMatch) {
-        wordTranslations.push({
-          english: word,
-          ibibio: exactMatch.ibibio,
-          meaning: exactMatch.meaning,
-          found: true
-        });
-        totalWordsFound++;
-        console.log(`Found "${word}" -> "${exactMatch.ibibio}" in local dictionary`);
-      } else {
-        // Try fuzzy search for partial matches
-        const fuzzyResults = dictionaryService.searchFuzzy(word, 1);
-        if (fuzzyResults.length > 0 && fuzzyResults[0].confidence > 0.8) {
-          const match = fuzzyResults[0].entry;
-          wordTranslations.push({
-            english: word,
-            ibibio: match.ibibio,
-            meaning: match.meaning,
-            found: true
-          });
-          totalWordsFound++;
-          console.log(`Found "${word}" -> "${match.ibibio}" via fuzzy search`);
-        } else {
-          wordTranslations.push({
-            english: word,
-            ibibio: word, // Keep original if not found
-            meaning: `Translation not found for "${word}"`,
-            found: false
-          });
-          console.log(`"${word}" not found in local dictionary`);
-        }
+      // Skip very short words (articles, prepositions)
+      if (word.length <= 2 && !['is', 'am', 'be', 'to', 'of', 'in', 'on', 'at'].includes(word)) {
+        translations.push(word); // Keep as-is
+        continue;
       }
+
+      // Try exact match first
+      const exactMatch = searchEngine.searchExact(word);
+      if (exactMatch.length > 0) {
+        translations.push(exactMatch[0].ibibio);
+        foundWords.push(word);
+        continue;
+      }
+
+      // Try fuzzy search with high confidence threshold
+      const fuzzyResults = searchEngine.searchFuzzy(word, 1);
+      if (fuzzyResults.length > 0 && fuzzyResults[0].confidence > 0.8) {
+        translations.push(fuzzyResults[0].entry.ibibio);
+        foundWords.push(word);
+        continue;
+      }
+
+      // Word not found
+      notFoundWords.push(word);
+      translations.push(`[${word}]`); // Mark as untranslated
     }
 
-    // Calculate confidence based on how many words were found
-    const confidence = totalWordsFound / words.length;
+    console.log(`Local sentence analysis: Found ${foundWords.length}/${words.length} words`);
+    console.log('Found words:', foundWords);
+    console.log('Not found words:', notFoundWords);
+
+    // Calculate confidence based on found words
+    const confidence = foundWords.length / words.length;
     
-    // Only return a result if we found at least 70% of the words
-    if (confidence < 0.7) {
-      console.log(`Only found ${totalWordsFound}/${words.length} words locally (${(confidence * 100).toFixed(1)}%). Skipping local sentence translation.`);
-      return null;
+    // Only return result if we found at least 70% of words
+    if (confidence >= 0.7) {
+      const ibibioSentence = translations.join(' ');
+      const englishSentence = words.join(' ');
+      
+      return {
+        result: {
+          id: `sentence-${Date.now()}`,
+          english: englishSentence,
+          ibibio: ibibioSentence,
+          meaning: `Sentence translation: ${englishSentence}`,
+          partOfSpeech: 'sentence',
+          examples: [],
+          cultural: `Translated word-by-word from local dictionary (${Math.round(confidence * 100)}% coverage)`
+        },
+        confidence: confidence * 100
+      };
     }
-
-    // Construct the sentence translation
-    const ibibioSentence = wordTranslations.map(wt => wt.ibibio).join(' ');
-    const meaningParts = wordTranslations
-      .filter(wt => wt.found)
-      .map(wt => `${wt.english}: ${wt.meaning}`)
-      .join('; ');
-
-    const sentenceEntry: DictionaryEntry = {
-      id: `sentence-${Date.now()}`,
-      english: originalQuery,
-      ibibio: ibibioSentence,
-      meaning: `Sentence translation: ${meaningParts}`,
-      partOfSpeech: 'sentence',
-      examples: [
-        {
-          english: originalQuery,
-          ibibio: ibibioSentence
-        }
-      ],
-      cultural: `This sentence was translated word-by-word using the local dictionary. ${totalWordsFound} out of ${words.length} words were found locally.`
-    };
-
-    console.log(`Successfully translated sentence locally: "${originalQuery}" -> "${ibibioSentence}"`);
 
     return {
-      entry: sentenceEntry,
-      confidence: confidence * 100, // Convert to percentage
-      alternatives: []
+      result: null,
+      confidence: confidence * 100
     };
   }
 
@@ -298,57 +278,28 @@ class ParallelSearchService {
     };
   }
 
-  private async searchOnlineWithAgent(query: string): Promise<{
-    result: DictionaryEntry;
-    confidence: number;
-    source: string;
-  } | null> {
+  private async searchOnline(query: string): Promise<DictionaryEntry | null> {
     try {
-      console.log('Using Langchain agent for validated online search...');
+      // Use AI to search online for the specific word with validation
+      const prompt = `Search online for the English to Ibibio translation of "${query}". 
       
-      const agentResult = await langchainAgentService.searchWithAgent(query);
-      
-      if (agentResult.result) {
-        console.log(`Agent found translation: "${query}" -> "${agentResult.result.ibibio}" (confidence: ${agentResult.confidence})`);
-        
-        return {
-          result: agentResult.result,
-          confidence: agentResult.confidence * 100, // Convert to percentage
-          source: agentResult.source
-        };
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Langchain agent search error:', error);
-      throw error;
-    }
-  }
-
-  private async searchOnlineFallback(query: string): Promise<DictionaryEntry | null> {
-    try {
-      console.log('Using fallback direct API search...');
-      
-      // Use direct Groq API as fallback with validation prompt
-      const prompt = `Translate "${query}" from English to Ibibio. 
-      
-      IMPORTANT: Only provide a translation if you are confident it is accurate. 
-      Cross-reference multiple sources if possible.
+      IMPORTANT: Verify the accuracy of your translation by cross-referencing multiple reliable sources.
+      Only provide translations you are confident are correct.
       
       Return ONLY a JSON response with this exact format:
       {
-        "ibibio": "the accurate Ibibio translation",
+        "ibibio": "the verified Ibibio translation",
         "meaning": "the English meaning/definition",
         "confidence": 0.8,
-        "validation": "brief note on how you verified this translation"
+        "verified": true
       }
       
-      If you cannot find a reliable and accurate translation, return:
+      If you cannot find a reliable and verified translation, return:
       {
         "ibibio": "",
         "meaning": "",
         "confidence": 0,
-        "validation": "no reliable translation found"
+        "verified": false
       }`;
 
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -362,7 +313,7 @@ class ParallelSearchService {
           messages: [
             {
               role: 'system',
-              content: 'You are a careful translator that only provides accurate English to Ibibio translations. Always validate your translations and indicate your confidence level.'
+              content: 'You are a careful and accurate translator that only provides verified English to Ibibio translations. Always verify your translations against multiple sources before responding.'
             },
             {
               role: 'user',
@@ -393,24 +344,23 @@ class ParallelSearchService {
 
       const result = JSON.parse(jsonMatch[0]);
       
-      if (!result.ibibio || !result.meaning || result.confidence === 0) {
-        console.log('Fallback search: No reliable translation found');
+      if (!result.ibibio || !result.meaning || result.confidence === 0 || !result.verified) {
         return null;
       }
 
-      // Create dictionary entry from validated fallback result
+      // Create dictionary entry from verified online result
       return {
-        id: `fallback-${Date.now()}`,
+        id: `online-verified-${Date.now()}`,
         english: query,
         ibibio: result.ibibio,
         meaning: result.meaning,
         partOfSpeech: 'unknown',
         examples: [],
-        cultural: `Translation found through validated online search. ${result.validation || 'Verified through multiple sources.'}`
+        cultural: 'Translation verified through online search with multiple source validation'
       };
 
     } catch (error) {
-      console.error('Fallback online search error:', error);
+      console.error('Online search error:', error);
       return null;
     }
   }
@@ -421,7 +371,7 @@ class ParallelSearchService {
       isInitialized: this.isInitialized,
       hasApiKey: !!groqService.getApiKey(),
       searchEngineReady: !!searchEngine,
-      langchainAgentReady: langchainAgentService.getStats().isInitialized
+      langchainAgentAvailable: langchainAgentService.isAvailable()
     };
   }
 }
