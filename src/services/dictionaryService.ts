@@ -163,19 +163,22 @@ class DictionaryService {
   search(query: string): DictionaryEntry | null {
     if (!this.isLoaded) return null;
     
-    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedQuery = (query || '').toLowerCase().trim();
+    if (!normalizedQuery) return null;
     
     // First try exact match
     const exactMatch = this.dictionary.find(entry => 
-      entry.english.toLowerCase() === normalizedQuery
+      entry.english && entry.english.toLowerCase() === normalizedQuery
     );
     
     if (exactMatch) return exactMatch;
     
     // Try partial match
     const partialMatch = this.dictionary.find(entry => 
-      entry.english.toLowerCase().includes(normalizedQuery) ||
-      normalizedQuery.includes(entry.english.toLowerCase())
+      entry.english && (
+        entry.english.toLowerCase().includes(normalizedQuery) ||
+        normalizedQuery.includes(entry.english.toLowerCase())
+      )
     );
     
     return partialMatch || null;
@@ -184,19 +187,25 @@ class DictionaryService {
   searchExact(query: string): DictionaryEntry | null {
     if (!this.isLoaded) return null;
     
-    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedQuery = (query || '').toLowerCase().trim();
+    if (!normalizedQuery) return null;
+    
     return this.dictionary.find(entry => 
-      entry.english.toLowerCase() === normalizedQuery
+      entry.english && entry.english.toLowerCase() === normalizedQuery
     ) || null;
   }
 
   searchFuzzy(query: string, limit = 5): SearchResult[] {
     if (!this.isLoaded) return [];
     
-    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedQuery = (query || '').toLowerCase().trim();
+    if (!normalizedQuery) return [];
+    
     const results: SearchResult[] = [];
 
     this.dictionary.forEach(entry => {
+      if (!entry.english || typeof entry.english !== 'string') return;
+      
       const englishLower = entry.english.toLowerCase();
       let confidence = 0;
 

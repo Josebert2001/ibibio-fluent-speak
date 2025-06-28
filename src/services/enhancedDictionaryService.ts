@@ -81,7 +81,8 @@ class EnhancedDictionaryService {
   search(query: string): DictionaryEntry | null {
     if (!this.isLoaded) return null;
     
-    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedQuery = (query || '').toLowerCase().trim();
+    if (!normalizedQuery) return null;
     
     // Try exact match first
     const exactMatches = this.searchIndex.get(normalizedQuery);
@@ -97,7 +98,9 @@ class EnhancedDictionaryService {
   searchFuzzy(query: string, limit = 5): SearchResult[] {
     if (!this.isLoaded || !this.isIndexed) return [];
     
-    const normalizedQuery = query.toLowerCase().trim();
+    const normalizedQuery = (query || '').toLowerCase().trim();
+    if (!normalizedQuery) return [];
+    
     const results: Map<string, SearchResult> = new Map();
     
     // Exact matches (highest confidence)
