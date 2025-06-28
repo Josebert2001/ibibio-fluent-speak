@@ -11,7 +11,7 @@ import { enhancedDictionaryService } from '../services/enhancedDictionaryService
 import { dictionaryService } from '../services/dictionaryService';
 import { parallelSearchService } from '../services/parallelSearchService';
 import { groqService } from '../services/groqService';
-import { DictionaryEntry, AlternativeTranslation } from '../types/dictionary';
+import { DictionaryEntry } from '../types/dictionary';
 
 const TranslationInterface = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,7 +22,6 @@ const TranslationInterface = () => {
   const [showDictionaryUpload, setShowDictionaryUpload] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [alternatives, setAlternatives] = useState<DictionaryEntry[]>([]);
-  const [aiAlternatives, setAiAlternatives] = useState<AlternativeTranslation[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [responseTime, setResponseTime] = useState<number>(0);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
@@ -43,7 +42,7 @@ const TranslationInterface = () => {
         await dictionaryService.loadDictionary();
         await enhancedDictionaryService.loadDictionary();
         
-        // Initialize parallel search service for enhanced capabilities
+        // Initialize parallel search service
         await parallelSearchService.initialize();
         
         console.log('Services initialized successfully');
@@ -72,7 +71,6 @@ const TranslationInterface = () => {
     setCurrentTranslation(null);
     setSearchError(null);
     setAlternatives([]);
-    setAiAlternatives([]);
     setSources([]);
     
     const startTime = performance.now();
@@ -80,7 +78,7 @@ const TranslationInterface = () => {
     try {
       console.log('Searching for:', safeQuery);
       
-      // Use parallel search service for comprehensive results
+      // Use parallel search service
       const searchResult = await parallelSearchService.search(safeQuery);
       
       const endTime = performance.now();
@@ -91,7 +89,6 @@ const TranslationInterface = () => {
         setSearchSource(searchResult.source);
         setConfidence(searchResult.confidence / 100); // Convert to 0-1 scale
         setAlternatives(searchResult.alternatives);
-        setAiAlternatives(searchResult.aiAlternatives || []);
         setSources(searchResult.sources);
         setResponseTime(searchTime);
         
@@ -108,7 +105,7 @@ const TranslationInterface = () => {
           )].slice(0, 5);
         });
         
-        console.log('Search completed successfully with', searchResult.aiAlternatives?.length || 0, 'AI alternatives');
+        console.log('Search completed successfully from source:', searchResult.source);
       } else {
         setCurrentTranslation(null);
         setSearchError(`No translation found for "${safeQuery}". Try a different word or phrase.`);
@@ -147,11 +144,9 @@ const TranslationInterface = () => {
 
   const getSourceLabel = (source: string) => {
     switch (source) {
-      case 'local_primary': return 'Local Dictionary';
-      case 'enhanced_local': return 'Enhanced Dictionary';
-      case 'ai_enhanced': return 'AI Enhanced';
-      case 'ai_primary': return 'AI Translation';
-      case 'online_primary': return 'Online Sources';
+      case 'local_dictionary': return 'Local Dictionary';
+      case 'online_search': return 'Online Search';
+      case 'local_fallback': return 'Local Dictionary (Fallback)';
       case 'cache': return 'Cached Result';
       default: return source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
@@ -168,16 +163,16 @@ const TranslationInterface = () => {
           Ibibio Translation Platform
         </h2>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Professional English to Ibibio translation with local dictionary and AI-powered alternative translations.
+          Professional English to Ibibio translation with local dictionary and online search when needed.
         </p>
         
-        {/* AI Features Badge */}
-        {hasApiKey && (
-          <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-purple-100 to-blue-100 px-4 py-2 rounded-full border border-purple-200">
-            <Sparkles className="w-4 h-4 text-purple-600" />
-            <span className="text-sm font-medium text-purple-700">AI-Enhanced with Alternative Translations</span>
-          </div>
-        )}
+        {/* Search Mode Badge */}
+        <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-green-100 px-4 py-2 rounded-full border border-blue-200">
+          <BookOpen className="w-4 h-4 text-blue-600" />
+          <span className="text-sm font-medium text-blue-700">
+            Local Dictionary + {hasApiKey ? 'Online Search' : 'Local Only'}
+          </span>
+        </div>
       </div>
 
       {/* Performance Metrics */}
@@ -240,7 +235,7 @@ const TranslationInterface = () => {
         <div className="text-center p-4 bg-green-50 rounded-lg">
           <p className="text-sm text-green-700">
             Dictionary loaded: <span className="font-semibold">{stats.totalEntries} entries</span>
-            {hasApiKey && <span className="ml-2">• AI-Enhanced Features Active</span>}
+            {hasApiKey && <span className="ml-2">• Online Search Available</span>}
             {stats.categories.length > 0 && (
               <span className="ml-2">• Categories: {stats.categories.join(', ')}</span>
             )}
@@ -291,47 +286,6 @@ const TranslationInterface = () => {
             translation={currentTranslation}
             isLoading={isLoading}
           />
-
-          {/* AI-Powered Alternative Translations */}
-          {aiAlternatives.length > 0 && (
-            <div className="mt-6">
-              <div className="flex items-center space-x-2 mb-4">
-                <Sparkles className="w-5 h-5 text-purple-600" />
-                <h3 className="text-lg font-semibold text-gray-800">AI-Powered Alternative Translations</h3>
-              </div>
-              <div className="grid gap-4">
-                {aiAlternatives.map((alt, index) => (
-                  <div key={index} className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <span className="text-lg font-semibold text-purple-700">{alt.ibibio}</span>
-                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
-                            {(alt.confidence * 100).toFixed(0)}% confidence
-                          </span>
-                          {alt.formality && (
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                              {alt.formality}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-gray-700 mb-1">{alt.meaning}</p>
-                        {alt.context && (
-                          <p className="text-sm text-gray-600 italic">Context: {alt.context}</p>
-                        )}
-                        {alt.usage_notes && (
-                          <p className="text-xs text-gray-500 mt-1">Usage: {alt.usage_notes}</p>
-                        )}
-                        {alt.region && (
-                          <p className="text-xs text-blue-600 mt-1">Regional: {alt.region}</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Dictionary Alternative Results */}
           {alternatives.length > 0 && (

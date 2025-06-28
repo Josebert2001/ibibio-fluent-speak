@@ -1,82 +1,39 @@
-import { ChatOpenAI } from '@langchain/openai';
-import { AgentExecutor, createReactAgent } from 'langchain/agents';
-import { pull } from 'langchain/hub';
-import { createOnlineDictionaryTool, createResultValidationTool } from './onlineSearchTools';
-import { 
-  createCulturalContextTool, 
-  createPronunciationTool, 
-  createExampleSentenceTool,
-  createComprehensiveSearchTool 
-} from './langchainTools';
 import { groqService } from './groqService';
 import { dictionaryService } from './dictionaryService';
 import { cacheManager } from './cacheManager';
 import { searchEngine } from './searchEngine';
-import { DictionaryEntry, SearchResult, AlternativeTranslation } from '../types/dictionary';
+import { DictionaryEntry } from '../types/dictionary';
 
 interface ParallelSearchResult {
   result: DictionaryEntry | null;
   confidence: number;
   source: string;
   alternatives: DictionaryEntry[];
-  aiAlternatives: AlternativeTranslation[];
   sources: string[];
   responseTime: number;
 }
 
 class ParallelSearchService {
-  private agent: AgentExecutor | null = null;
   private isInitialized = false;
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
 
     try {
-      const apiKey = groqService.getApiKey();
-      if (!apiKey) {
-        console.log('Groq API key not available - using local search only');
-        this.isInitialized = true; // Mark as initialized for local-only mode
-        return;
+      // Initialize dictionary services
+      await dictionaryService.loadDictionary();
+      
+      // Build search index
+      const entries = dictionaryService.getAllEntries();
+      if (entries.length > 0) {
+        searchEngine.buildIndex(entries);
       }
 
-      const llm = new ChatOpenAI({
-        modelName: 'llama3-8b-8192',
-        temperature: 0.05,
-        openAIApiKey: apiKey,
-        configuration: {
-          baseURL: 'https://api.groq.com/openai/v1'
-        }
-      });
-
-      const prompt = await pull<any>('hwchase17/react');
-      
-      const tools = [
-        createOnlineDictionaryTool(),
-        createResultValidationTool(),
-        createCulturalContextTool(),
-        createPronunciationTool(),
-        createExampleSentenceTool(),
-        createComprehensiveSearchTool()
-      ];
-
-      const agentRunnable = await createReactAgent({
-        llm,
-        tools,
-        prompt,
-      });
-
-      this.agent = new AgentExecutor({
-        agent: agentRunnable,
-        tools,
-        verbose: false,
-        maxIterations: 2,
-      });
-
       this.isInitialized = true;
-      console.log('Enhanced parallel search service initialized with AI capabilities');
+      console.log('Parallel search service initialized');
     } catch (error) {
-      console.error('Failed to initialize AI features, falling back to local search:', error);
-      this.isInitialized = true; // Still mark as initialized for local-only mode
+      console.error('Failed to initialize parallel search service:', error);
+      this.isInitialized = true; // Mark as initialized even if there are errors
     }
   }
 
@@ -94,101 +51,75 @@ class ParallelSearchService {
       };
     }
 
-    // Initialize search engine if needed
-    const entries = dictionaryService.getAllEntries();
-    if (entries.length > 0) {
-      searchEngine.buildIndex(entries);
+    // Initialize if needed
+    if (!this.isInitialized) {
+      await this.initialize();
     }
 
     try {
-      // Always try local search first
-      const localResults = await this.searchLocal(normalizedQuery);
+      // Step 1: Search local dictionary first
+      const localResult = await this.searchLocal(normalizedQuery);
       
-      // If we have a local result and AI is available, enhance it with alternatives
-      if (localResults.result && this.agent) {
-        try {
-          const [enhancedResults, aiAlternatives] = await Promise.all([
-            this.searchEnhanced(normalizedQuery),
-            this.getAIAlternatives(normalizedQuery, localResults.result.ibibio)
-          ]);
-          
-          const finalResult = await this.reconcileEnhancedResults(
-            normalizedQuery, 
-            localResults, 
-            enhancedResults,
-            aiAlternatives
-          );
-          
+      if (localResult.result) {
+        // Found in local dictionary - return immediately
+        const result: ParallelSearchResult = {
+          result: localResult.result,
+          confidence: localResult.confidence,
+          source: 'local_dictionary',
+          alternatives: localResult.alternatives,
+          sources: ['local_dictionary'],
+          responseTime: Date.now() - startTime
+        };
+
+        // Cache the result
+        cacheManager.set(normalizedQuery, result, result.source);
+        return result;
+      }
+
+      // Step 2: Not found locally - try online search with AI
+      const apiKey = groqService.getApiKey();
+      if (!apiKey) {
+        // No API key available
+        return {
+          result: null,
+          confidence: 0,
+          source: 'none',
+          alternatives: [],
+          sources: [],
+          responseTime: Date.now() - startTime
+        };
+      }
+
+      console.log(`Word "${query}" not found in local dictionary. Searching online...`);
+      
+      try {
+        const onlineResult = await this.searchOnline(normalizedQuery);
+        
+        if (onlineResult) {
           const result: ParallelSearchResult = {
-            ...finalResult,
+            result: onlineResult,
+            confidence: 75, // Online results get 75% confidence
+            source: 'online_search',
+            alternatives: [],
+            sources: ['online_search'],
             responseTime: Date.now() - startTime
           };
 
-          // Cache successful results
-          if (result.result) {
-            cacheManager.set(normalizedQuery, result, result.source);
-          }
-
+          // Cache the online result
+          cacheManager.set(normalizedQuery, result, result.source);
           return result;
-        } catch (aiError) {
-          console.warn('AI enhancement failed, using local result:', aiError);
-          // Return local result if AI enhancement fails
-          return {
-            result: localResults.result,
-            confidence: localResults.confidence,
-            source: 'local_primary',
-            alternatives: localResults.alternatives,
-            aiAlternatives: [],
-            sources: ['local_dictionary'],
-            responseTime: Date.now() - startTime
-          };
         }
+      } catch (onlineError) {
+        console.error('Online search failed:', onlineError);
       }
 
-      // If no local result and AI is available, try AI-only search with alternatives
-      if (!localResults.result && this.agent) {
-        try {
-          const aiResults = await groqService.translateWithAI(normalizedQuery);
-          if (aiResults && aiResults.ibibio) {
-            const result: ParallelSearchResult = {
-              result: {
-                id: `ai-only-${Date.now()}`,
-                english: query,
-                ibibio: aiResults.ibibio,
-                meaning: aiResults.meaning || `AI-generated translation for ${query}`,
-                partOfSpeech: 'unknown',
-                examples: aiResults.examples || [],
-                pronunciation: aiResults.pronunciation,
-                cultural: aiResults.cultural || 'AI-enhanced translation'
-              },
-              confidence: (aiResults.confidence || 0.75) * 100,
-              source: 'ai_primary',
-              alternatives: [],
-              aiAlternatives: aiResults.alternatives || [],
-              sources: ['ai_translation'],
-              responseTime: Date.now() - startTime
-            };
-
-            // Cache AI result
-            if (result.result) {
-              cacheManager.set(normalizedQuery, result, result.source);
-            }
-
-            return result;
-          }
-        } catch (aiError) {
-          console.warn('AI search failed:', aiError);
-        }
-      }
-
-      // Return local result or empty result
+      // No results found anywhere
       return {
-        result: localResults.result,
-        confidence: localResults.confidence,
-        source: localResults.result ? 'local_primary' : 'none',
-        alternatives: localResults.alternatives,
-        aiAlternatives: [],
-        sources: localResults.result ? ['local_dictionary'] : [],
+        result: null,
+        confidence: 0,
+        source: 'none',
+        alternatives: [],
+        sources: [],
         responseTime: Date.now() - startTime
       };
 
@@ -199,10 +130,9 @@ class ParallelSearchService {
       const fallbackResult = dictionaryService.search(normalizedQuery);
       return {
         result: fallbackResult,
-        confidence: fallbackResult ? 80 : 0,
+        confidence: fallbackResult ? 60 : 0,
         source: 'local_fallback',
         alternatives: [],
-        aiAlternatives: [],
         sources: fallbackResult ? ['local_dictionary'] : [],
         responseTime: Date.now() - startTime
       };
@@ -214,7 +144,7 @@ class ParallelSearchService {
     confidence: number;
     alternatives: DictionaryEntry[];
   }> {
-    const results = searchEngine.searchFuzzy(query, 8); // Get more alternatives
+    const results = searchEngine.searchFuzzy(query, 5);
     
     return {
       result: results.length > 0 ? results[0].entry : null,
@@ -223,110 +153,96 @@ class ParallelSearchService {
     };
   }
 
-  private async searchEnhanced(query: string): Promise<any> {
-    if (!this.agent) {
-      throw new Error('AI enhancement not available');
-    }
-
-    const prompt = `Find Ibibio translation for "${query}". Return concise JSON with translation, cultural context, and pronunciation.`;
-    
-    const result = await this.agent.invoke({
-      input: prompt
-    });
-
+  private async searchOnline(query: string): Promise<DictionaryEntry | null> {
     try {
-      const jsonMatch = result.output.match(/\{[\s\S]*\}/);
-      const jsonString = jsonMatch ? jsonMatch[0] : result.output;
-      const parsed = JSON.parse(jsonString);
-      return parsed;
+      // Use AI to search online for the specific word
+      const prompt = `Search online for the English to Ibibio translation of "${query}". 
+      
+      Look for this word in online dictionaries, language resources, and reliable sources.
+      
+      Return ONLY a JSON response with this exact format:
+      {
+        "ibibio": "the Ibibio translation",
+        "meaning": "the English meaning/definition",
+        "confidence": 0.8
+      }
+      
+      If you cannot find a reliable translation, return:
+      {
+        "ibibio": "",
+        "meaning": "",
+        "confidence": 0
+      }`;
+
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${groqService.getApiKey()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama3-8b-8192',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a helpful assistant that searches online for English to Ibibio translations. Return only valid JSON responses.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.1,
+          max_tokens: 500,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+      
+      if (!content) {
+        return null;
+      }
+
+      // Extract JSON from response
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return null;
+      }
+
+      const result = JSON.parse(jsonMatch[0]);
+      
+      if (!result.ibibio || !result.meaning || result.confidence === 0) {
+        return null;
+      }
+
+      // Create dictionary entry from online result
+      return {
+        id: `online-${Date.now()}`,
+        english: query,
+        ibibio: result.ibibio,
+        meaning: result.meaning,
+        partOfSpeech: 'unknown',
+        examples: [],
+        cultural: 'Translation found through online search'
+      };
+
     } catch (error) {
-      console.error('Failed to parse AI response:', error);
+      console.error('Online search error:', error);
       return null;
     }
-  }
-
-  private async getAIAlternatives(query: string, primaryTranslation: string): Promise<AlternativeTranslation[]> {
-    try {
-      if (!groqService.getApiKey()) {
-        return [];
-      }
-
-      const alternatives = await groqService.getAlternativeTranslations(query, primaryTranslation);
-      return alternatives || [];
-    } catch (error) {
-      console.error('Failed to get AI alternatives:', error);
-      return [];
-    }
-  }
-
-  private async reconcileEnhancedResults(
-    query: string,
-    localResults: any,
-    enhancedResults: any,
-    aiAlternatives: AlternativeTranslation[]
-  ): Promise<{
-    result: DictionaryEntry | null;
-    confidence: number;
-    source: string;
-    alternatives: DictionaryEntry[];
-    aiAlternatives: AlternativeTranslation[];
-    sources: string[];
-  }> {
-    if (localResults?.result) {
-      const enhancedEntry = { ...localResults.result };
-      const alternatives = [...(localResults.alternatives || [])];
-      const sources = ['local_dictionary'];
-
-      // Enhance with AI data if available
-      if (enhancedResults) {
-        if (enhancedResults.cultural) {
-          enhancedEntry.cultural = enhancedResults.cultural;
-          sources.push('ai_cultural_context');
-        }
-        if (enhancedResults.pronunciation) {
-          enhancedEntry.pronunciation = enhancedResults.pronunciation;
-          sources.push('ai_pronunciation');
-        }
-        if (enhancedResults.examples && enhancedResults.examples.length > 0) {
-          enhancedEntry.examples = [
-            ...(enhancedEntry.examples || []),
-            ...enhancedResults.examples
-          ].slice(0, 3);
-          sources.push('ai_examples');
-        }
-      }
-
-      // Add AI alternatives as sources
-      if (aiAlternatives.length > 0) {
-        sources.push('ai_alternatives');
-      }
-
-      return {
-        result: enhancedEntry,
-        confidence: Math.min(100, localResults.confidence + (enhancedResults ? 10 : 0)),
-        source: 'enhanced_local',
-        alternatives: alternatives.slice(0, 4),
-        aiAlternatives: aiAlternatives.slice(0, 5),
-        sources
-      };
-    }
-
-    return {
-      result: null,
-      confidence: 0,
-      source: 'none',
-      alternatives: [],
-      aiAlternatives: [],
-      sources: []
-    };
   }
 
   getStats() {
     return {
       cacheStats: cacheManager.getStats(),
-      isAiEnabled: this.isInitialized && !!this.agent,
-      searchEngineReady: !!searchEngine,
-      toolsAvailable: this.isInitialized && this.agent ? 6 : 0
+      isInitialized: this.isInitialized,
+      hasApiKey: !!groqService.getApiKey(),
+      searchEngineReady: !!searchEngine
     };
   }
 }
