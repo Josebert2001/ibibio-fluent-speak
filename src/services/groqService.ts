@@ -65,7 +65,8 @@ class GroqService {
         meaning: parsed.meaning || '',
         confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
         examples: Array.isArray(parsed.examples) ? parsed.examples : [],
-        cultural: parsed.cultural || null
+        cultural: parsed.cultural || null,
+        alternatives: Array.isArray(parsed.alternatives) ? parsed.alternatives : []
       };
     } catch (error) {
       console.error('JSON parsing failed:', error);
@@ -80,13 +81,13 @@ class GroqService {
       throw new Error('Groq API key not configured. Please set VITE_GROQ_API_KEY environment variable or configure it in the setup section.');
     }
 
-    const prompt = `You are an expert English to Ibibio translator. Translate the following English word or phrase to Ibibio and provide detailed information.
+    const prompt = `You are an expert English to Ibibio translator. Translate the following English word or phrase to Ibibio and provide detailed information including multiple alternative translations.
 
 English: "${englishQuery}"
 
 Please provide a JSON response with the following structure:
 {
-  "ibibio": "the Ibibio translation",
+  "ibibio": "the primary Ibibio translation",
   "meaning": "detailed meaning in English",
   "confidence": 0.95,
   "examples": [
@@ -95,10 +96,24 @@ Please provide a JSON response with the following structure:
       "ibibio": "example sentence in Ibibio"
     }
   ],
-  "cultural": "cultural context or notes (optional)"
+  "cultural": "cultural context or notes (optional)",
+  "alternatives": [
+    {
+      "ibibio": "alternative translation 1",
+      "meaning": "meaning of alternative 1",
+      "context": "when to use this alternative",
+      "confidence": 0.85
+    },
+    {
+      "ibibio": "alternative translation 2", 
+      "meaning": "meaning of alternative 2",
+      "context": "when to use this alternative",
+      "confidence": 0.80
+    }
+  ]
 }
 
-Focus on accuracy and cultural appropriateness. If you're not confident about the translation, indicate it in the confidence score.`;
+Focus on providing multiple valid alternatives with different contexts, formality levels, or regional variations. Include confidence scores for each alternative.`;
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -112,15 +127,15 @@ Focus on accuracy and cultural appropriateness. If you're not confident about th
           messages: [
             {
               role: 'system',
-              content: 'You are an expert Ibibio language translator. Always respond with valid JSON only, no additional text.'
+              content: 'You are an expert Ibibio language translator with deep knowledge of regional variations, formality levels, and contextual usage. Always respond with valid JSON only, no additional text. Provide multiple alternative translations when possible.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
-          temperature: 0.3,
-          max_tokens: 1000,
+          temperature: 0.4, // Slightly higher for more creative alternatives
+          max_tokens: 1500, // Increased for more alternatives
         }),
       });
 
@@ -140,6 +155,76 @@ Focus on accuracy and cultural appropriateness. If you're not confident about th
     } catch (error) {
       console.error('Groq API error:', error);
       throw new Error('Failed to get AI translation');
+    }
+  }
+
+  async getAlternativeTranslations(englishQuery: string, primaryTranslation: string): Promise<any[]> {
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error('Groq API key not configured');
+    }
+
+    const prompt = `Given the English word "${englishQuery}" with primary Ibibio translation "${primaryTranslation}", provide additional alternative translations with different contexts, formality levels, or regional variations.
+
+Provide a JSON array of alternatives:
+[
+  {
+    "ibibio": "alternative translation",
+    "meaning": "specific meaning or nuance",
+    "context": "when to use this (formal/informal/regional/etc)",
+    "confidence": 0.85,
+    "usage_notes": "additional usage information"
+  }
+]
+
+Focus on providing 3-5 high-quality alternatives that offer different nuances or contexts.`;
+
+    try {
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama3-8b-8192',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert in Ibibio language variations and contextual usage. Provide alternative translations as a JSON array only.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: 0.5,
+          max_tokens: 800,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Groq API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0]?.message?.content;
+      
+      if (!content) {
+        return [];
+      }
+
+      try {
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        const jsonString = jsonMatch ? jsonMatch[0] : content;
+        return JSON.parse(jsonString);
+      } catch (parseError) {
+        console.error('Failed to parse alternatives:', parseError);
+        return [];
+      }
+    } catch (error) {
+      console.error('Alternative translations error:', error);
+      return [];
     }
   }
 }

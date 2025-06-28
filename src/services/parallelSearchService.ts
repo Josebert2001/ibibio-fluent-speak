@@ -12,13 +12,14 @@ import { groqService } from './groqService';
 import { dictionaryService } from './dictionaryService';
 import { cacheManager } from './cacheManager';
 import { searchEngine } from './searchEngine';
-import { DictionaryEntry, SearchResult } from '../types/dictionary';
+import { DictionaryEntry, SearchResult, AlternativeTranslation } from '../types/dictionary';
 
 interface ParallelSearchResult {
   result: DictionaryEntry | null;
   confidence: number;
   source: string;
   alternatives: DictionaryEntry[];
+  aiAlternatives: AlternativeTranslation[];
   sources: string[];
   responseTime: number;
 }
@@ -103,11 +104,20 @@ class ParallelSearchService {
       // Always try local search first
       const localResults = await this.searchLocal(normalizedQuery);
       
-      // If we have a good local result, enhance it if AI is available
+      // If we have a local result and AI is available, enhance it with alternatives
       if (localResults.result && this.agent) {
         try {
-          const enhancedResults = await this.searchEnhanced(normalizedQuery);
-          const finalResult = await this.reconcileEnhancedResults(normalizedQuery, localResults, enhancedResults);
+          const [enhancedResults, aiAlternatives] = await Promise.all([
+            this.searchEnhanced(normalizedQuery),
+            this.getAIAlternatives(normalizedQuery, localResults.result.ibibio)
+          ]);
+          
+          const finalResult = await this.reconcileEnhancedResults(
+            normalizedQuery, 
+            localResults, 
+            enhancedResults,
+            aiAlternatives
+          );
           
           const result: ParallelSearchResult = {
             ...finalResult,
@@ -128,16 +138,17 @@ class ParallelSearchService {
             confidence: localResults.confidence,
             source: 'local_primary',
             alternatives: localResults.alternatives,
+            aiAlternatives: [],
             sources: ['local_dictionary'],
             responseTime: Date.now() - startTime
           };
         }
       }
 
-      // If no local result and AI is available, try AI-only search
+      // If no local result and AI is available, try AI-only search with alternatives
       if (!localResults.result && this.agent) {
         try {
-          const aiResults = await this.searchEnhanced(normalizedQuery);
+          const aiResults = await groqService.translateWithAI(normalizedQuery);
           if (aiResults && aiResults.ibibio) {
             const result: ParallelSearchResult = {
               result: {
@@ -150,9 +161,10 @@ class ParallelSearchService {
                 pronunciation: aiResults.pronunciation,
                 cultural: aiResults.cultural || 'AI-enhanced translation'
               },
-              confidence: 75,
+              confidence: (aiResults.confidence || 0.75) * 100,
               source: 'ai_primary',
               alternatives: [],
+              aiAlternatives: aiResults.alternatives || [],
               sources: ['ai_translation'],
               responseTime: Date.now() - startTime
             };
@@ -175,6 +187,7 @@ class ParallelSearchService {
         confidence: localResults.confidence,
         source: localResults.result ? 'local_primary' : 'none',
         alternatives: localResults.alternatives,
+        aiAlternatives: [],
         sources: localResults.result ? ['local_dictionary'] : [],
         responseTime: Date.now() - startTime
       };
@@ -189,6 +202,7 @@ class ParallelSearchService {
         confidence: fallbackResult ? 80 : 0,
         source: 'local_fallback',
         alternatives: [],
+        aiAlternatives: [],
         sources: fallbackResult ? ['local_dictionary'] : [],
         responseTime: Date.now() - startTime
       };
@@ -200,7 +214,7 @@ class ParallelSearchService {
     confidence: number;
     alternatives: DictionaryEntry[];
   }> {
-    const results = searchEngine.searchFuzzy(query, 5);
+    const results = searchEngine.searchFuzzy(query, 8); // Get more alternatives
     
     return {
       result: results.length > 0 ? results[0].entry : null,
@@ -231,15 +245,31 @@ class ParallelSearchService {
     }
   }
 
+  private async getAIAlternatives(query: string, primaryTranslation: string): Promise<AlternativeTranslation[]> {
+    try {
+      if (!groqService.getApiKey()) {
+        return [];
+      }
+
+      const alternatives = await groqService.getAlternativeTranslations(query, primaryTranslation);
+      return alternatives || [];
+    } catch (error) {
+      console.error('Failed to get AI alternatives:', error);
+      return [];
+    }
+  }
+
   private async reconcileEnhancedResults(
     query: string,
     localResults: any,
-    enhancedResults: any
+    enhancedResults: any,
+    aiAlternatives: AlternativeTranslation[]
   ): Promise<{
     result: DictionaryEntry | null;
     confidence: number;
     source: string;
     alternatives: DictionaryEntry[];
+    aiAlternatives: AlternativeTranslation[];
     sources: string[];
   }> {
     if (localResults?.result) {
@@ -266,11 +296,17 @@ class ParallelSearchService {
         }
       }
 
+      // Add AI alternatives as sources
+      if (aiAlternatives.length > 0) {
+        sources.push('ai_alternatives');
+      }
+
       return {
         result: enhancedEntry,
         confidence: Math.min(100, localResults.confidence + (enhancedResults ? 10 : 0)),
         source: 'enhanced_local',
-        alternatives: alternatives.slice(0, 3),
+        alternatives: alternatives.slice(0, 4),
+        aiAlternatives: aiAlternatives.slice(0, 5),
         sources
       };
     }
@@ -280,6 +316,7 @@ class ParallelSearchService {
       confidence: 0,
       source: 'none',
       alternatives: [],
+      aiAlternatives: [],
       sources: []
     };
   }

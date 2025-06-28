@@ -1,4 +1,3 @@
-
 export interface DictionaryEntry {
   id: string;
   english: string;
@@ -20,6 +19,16 @@ export interface SearchResult {
   source: 'dictionary' | 'ai' | 'online';
 }
 
+export interface AlternativeTranslation {
+  ibibio: string;
+  meaning: string;
+  context?: string;
+  confidence: number;
+  usage_notes?: string;
+  formality?: 'formal' | 'informal' | 'neutral';
+  region?: string;
+}
+
 export interface GroqResponse {
   ibibio: string;
   meaning: string;
@@ -29,4 +38,5 @@ export interface GroqResponse {
     ibibio: string;
   }>;
   cultural?: string;
+  alternatives?: AlternativeTranslation[];
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw } from 'lucide-react';
+import { AlertCircle, TrendingUp, Clock, Target, BookOpen, RefreshCw, Sparkles } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import SearchBar from './SearchBar';
 import TranslationResult from './TranslationResult';
@@ -11,7 +11,7 @@ import { enhancedDictionaryService } from '../services/enhancedDictionaryService
 import { dictionaryService } from '../services/dictionaryService';
 import { parallelSearchService } from '../services/parallelSearchService';
 import { groqService } from '../services/groqService';
-import { DictionaryEntry } from '../types/dictionary';
+import { DictionaryEntry, AlternativeTranslation } from '../types/dictionary';
 
 const TranslationInterface = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,6 +22,7 @@ const TranslationInterface = () => {
   const [showSetup, setShowSetup] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [alternatives, setAlternatives] = useState<DictionaryEntry[]>([]);
+  const [aiAlternatives, setAiAlternatives] = useState<AlternativeTranslation[]>([]);
   const [sources, setSources] = useState<string[]>([]);
   const [responseTime, setResponseTime] = useState<number>(0);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
@@ -71,6 +72,7 @@ const TranslationInterface = () => {
     setCurrentTranslation(null);
     setSearchError(null);
     setAlternatives([]);
+    setAiAlternatives([]);
     setSources([]);
     
     const startTime = performance.now();
@@ -89,6 +91,7 @@ const TranslationInterface = () => {
         setSearchSource(searchResult.source);
         setConfidence(searchResult.confidence / 100); // Convert to 0-1 scale
         setAlternatives(searchResult.alternatives);
+        setAiAlternatives(searchResult.aiAlternatives || []);
         setSources(searchResult.sources);
         setResponseTime(searchTime);
         
@@ -105,7 +108,7 @@ const TranslationInterface = () => {
           )].slice(0, 5);
         });
         
-        console.log('Search completed successfully');
+        console.log('Search completed successfully with', searchResult.aiAlternatives?.length || 0, 'AI alternatives');
       } else {
         setCurrentTranslation(null);
         setSearchError(`No translation found for "${safeQuery}". Try a different word or check if you have an API key configured for enhanced search.`);
@@ -147,6 +150,7 @@ const TranslationInterface = () => {
       case 'local_primary': return 'Local Dictionary';
       case 'enhanced_local': return 'Enhanced Dictionary';
       case 'ai_enhanced': return 'AI Enhanced';
+      case 'ai_primary': return 'AI Translation';
       case 'online_primary': return 'Online Sources';
       case 'cache': return 'Cached Result';
       default: return source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -164,8 +168,16 @@ const TranslationInterface = () => {
           Ibibio Translation Platform
         </h2>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Professional English to Ibibio translation with local dictionary and AI-powered enhancements.
+          Professional English to Ibibio translation with local dictionary and AI-powered alternative translations.
         </p>
+        
+        {/* AI Features Badge */}
+        {hasApiKey && (
+          <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-purple-100 to-blue-100 px-4 py-2 rounded-full border border-purple-200">
+            <Sparkles className="w-4 h-4 text-purple-600" />
+            <span className="text-sm font-medium text-purple-700">AI-Enhanced with Alternative Translations</span>
+          </div>
+        )}
       </div>
 
       {/* Performance Metrics */}
@@ -229,7 +241,7 @@ const TranslationInterface = () => {
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <div className="text-sm">
             <p className="font-medium">Local dictionary search is active</p>
-            <p>Configure Groq API key for enhanced AI-powered translations and online search capabilities.</p>
+            <p>Configure Groq API key for enhanced AI-powered translations with multiple alternatives and contextual variations.</p>
           </div>
         </div>
       )}
@@ -290,13 +302,54 @@ const TranslationInterface = () => {
             isLoading={isLoading}
           />
 
-          {/* Alternative Results */}
+          {/* AI-Powered Alternative Translations */}
+          {aiAlternatives.length > 0 && (
+            <div className="mt-6">
+              <div className="flex items-center space-x-2 mb-4">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                <h3 className="text-lg font-semibold text-gray-800">AI-Powered Alternative Translations</h3>
+              </div>
+              <div className="grid gap-4">
+                {aiAlternatives.map((alt, index) => (
+                  <div key={index} className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center space-x-3 mb-2">
+                          <span className="text-lg font-semibold text-purple-700">{alt.ibibio}</span>
+                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                            {(alt.confidence * 100).toFixed(0)}% confidence
+                          </span>
+                          {alt.formality && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                              {alt.formality}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-gray-700 mb-1">{alt.meaning}</p>
+                        {alt.context && (
+                          <p className="text-sm text-gray-600 italic">Context: {alt.context}</p>
+                        )}
+                        {alt.usage_notes && (
+                          <p className="text-xs text-gray-500 mt-1">Usage: {alt.usage_notes}</p>
+                        )}
+                        {alt.region && (
+                          <p className="text-xs text-blue-600 mt-1">Regional: {alt.region}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Dictionary Alternative Results */}
           {alternatives.length > 0 && (
             <div className="mt-6">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">Alternative Translations</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-3">Dictionary Alternatives</h3>
               <div className="grid gap-3">
                 {alternatives.map((alt, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-4">
+                  <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <div className="flex items-center space-x-3">
                       <span className="font-medium text-blue-700">{alt.ibibio}</span>
                       <span className="text-gray-600">•</span>
