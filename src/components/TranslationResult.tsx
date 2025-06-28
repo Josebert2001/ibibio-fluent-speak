@@ -20,6 +20,60 @@ interface TranslationResultProps {
 }
 
 const TranslationResult = ({ translation, isLoading }: TranslationResultProps) => {
+  // Helper function to extract concise meaning from full definition
+  const getConciseMeaning = (fullMeaning: string, englishWord: string): string | null => {
+    if (!fullMeaning || typeof fullMeaning !== 'string') return null;
+    
+    const meaning = fullMeaning.trim();
+    
+    // If the meaning is already short and simple (1-3 words without complex punctuation)
+    const wordCount = meaning.split(/\s+/).length;
+    const hasComplexPunctuation = /[;:,\.\!\?]/.test(meaning);
+    
+    if (wordCount <= 3 && !hasComplexPunctuation) {
+      return meaning;
+    }
+    
+    // If meaning contains semicolon, take the part before first semicolon
+    if (meaning.includes(';')) {
+      const beforeSemicolon = meaning.split(';')[0].trim();
+      const beforeWordCount = beforeSemicolon.split(/\s+/).length;
+      
+      if (beforeWordCount <= 4 && beforeSemicolon.length > 0) {
+        return beforeSemicolon;
+      }
+    }
+    
+    // Extract key descriptive words from the beginning of the definition
+    const words = meaning.split(/\s+/);
+    
+    // Look for patterns like "A [adjective] [noun]" or "The [adjective] [noun]"
+    if (words.length >= 3) {
+      const startsWithArticle = /^(a|an|the)$/i.test(words[0]);
+      
+      if (startsWithArticle) {
+        // Take the next 1-2 words after the article
+        const keyWords = words.slice(1, 3).join(' ');
+        if (keyWords && !keyWords.includes(',') && !keyWords.includes(';')) {
+          return keyWords;
+        }
+      } else {
+        // Take the first 1-2 words if they form a meaningful phrase
+        const keyWords = words.slice(0, 2).join(' ');
+        if (keyWords && !keyWords.includes(',') && !keyWords.includes(';')) {
+          return keyWords;
+        }
+      }
+    }
+    
+    // If the English word is a single word, use it as a fallback concise meaning
+    if (englishWord && englishWord.split(/\s+/).length === 1) {
+      return englishWord.toLowerCase();
+    }
+    
+    return null;
+  };
+
   const playPronunciation = () => {
     console.log('Playing pronunciation for:', translation.ibibio);
     // In a real implementation, this would use text-to-speech or audio files
@@ -50,6 +104,11 @@ const TranslationResult = ({ translation, isLoading }: TranslationResultProps) =
       </Card>
     );
   }
+
+  // Analyze the meaning and extract concise version if possible
+  const conciseMeaningToDisplay = getConciseMeaning(translation.meaning, translation.english);
+  const showFullMeaningSeparately = conciseMeaningToDisplay && 
+    conciseMeaningToDisplay.toLowerCase() !== translation.meaning.toLowerCase();
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-6 animate-in slide-in-from-bottom-4 duration-500">
@@ -102,7 +161,39 @@ const TranslationResult = ({ translation, isLoading }: TranslationResultProps) =
         <CardContent className="p-6 space-y-4">
           <div>
             <h4 className="font-semibold text-gray-800 mb-2">Meaning</h4>
-            <p className="text-gray-700">{translation.meaning}</p>
+            
+            {/* Show concise meaning first if available */}
+            {conciseMeaningToDisplay && (
+              <div className="mb-3">
+                <div className="flex items-center space-x-2 mb-1">
+                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                    Concise
+                  </Badge>
+                </div>
+                <p className="text-lg font-medium text-gray-800 bg-green-50 px-3 py-2 rounded-lg border-l-4 border-green-400">
+                  {conciseMeaningToDisplay}
+                </p>
+              </div>
+            )}
+            
+            {/* Show full definition if it's different from concise meaning */}
+            {showFullMeaningSeparately && (
+              <div>
+                <div className="flex items-center space-x-2 mb-1">
+                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                    Full Definition
+                  </Badge>
+                </div>
+                <p className="text-gray-700 bg-blue-50 px-3 py-2 rounded-lg border-l-4 border-blue-400">
+                  {translation.meaning}
+                </p>
+              </div>
+            )}
+            
+            {/* Show only the original meaning if no concise version was extracted */}
+            {!conciseMeaningToDisplay && (
+              <p className="text-gray-700">{translation.meaning}</p>
+            )}
           </div>
 
           {translation.examples && translation.examples.length > 0 && (
