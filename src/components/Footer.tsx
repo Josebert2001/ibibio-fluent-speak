@@ -8,7 +8,7 @@ const Footer = () => {
         <div className="text-center space-y-3">
           {/* Main Copyright */}
           <p className="text-sm sm:text-base text-gray-700 font-medium">
-            © 2025 Ibibio Translator by <span className="font-bold text-blue-600">JR-Solvy</span>
+            © 2025 Ibi-Voice by <span className="font-bold text-blue-600">JR-Solvy</span>
           </p>
           
           {/* Company Info */}

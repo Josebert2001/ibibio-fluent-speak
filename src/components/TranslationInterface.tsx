@@ -161,7 +161,7 @@ const TranslationInterface = () => {
       {/* Hero Section - Mobile Optimized */}
       <div className="text-center space-y-3 sm:space-y-4 py-4 sm:py-6 lg:py-8">
         <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
-          Ibibio Translator
+          Ibi-Voice
         </h2>
         <p className="text-base sm:text-lg lg:text-xl text-gray-600 max-w-2xl mx-auto px-2">
           English to Ibibio translation with local dictionary and online search

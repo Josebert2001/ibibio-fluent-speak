@@ -1,23 +1,22 @@
-# Ibibio Translation Platform
+# Ibi-Voice - English to Ibibio Translation Platform
 
-A professional English to Ibibio translation platform with local dictionary search and AI-powered enhancements.
+A professional English to Ibibio translation platform with local dictionary search and AI-powered online search capabilities.
 
 ## Features
 
 - **Local Dictionary Search**: Fast, offline English to Ibibio translation using a comprehensive dictionary
-- **AI-Enhanced Translation**: Powered by Groq's Llama3 model for words not in the local dictionary
-- **Alternative Translations**: Multiple contextual variations with different formality levels
-- **Cultural Context**: Provides cultural background and context for translations
+- **AI-Enhanced Online Search**: Powered by Groq's Llama3 model for words not found in the local dictionary
 - **Smart Caching**: Intelligent caching system for faster repeated searches
-- **Multi-Source Search**: Combines local dictionary, online sources, and AI translation
+- **Multi-Source Search**: Combines local dictionary and online AI search
 - **Voice Input**: Speech recognition for hands-free searching
 - **Performance Monitoring**: Real-time performance metrics and optimization
+- **Mobile Responsive**: Optimized for all device sizes
 
 ## Technology Stack
 
 - **Frontend**: React, TypeScript, Tailwind CSS, shadcn/ui
 - **Build Tool**: Vite
-- **AI Integration**: Groq API with Langchain
+- **AI Integration**: Groq API with Llama3-8b-8192
 - **Search Engine**: Custom fuzzy search with indexing
 - **Caching**: Intelligent multi-layer caching system
 
@@ -75,7 +74,7 @@ cd <YOUR_PROJECT_NAME>
 # Install dependencies
 npm install
 
-# Set up environment variables (optional, for AI features)
+# Set up environment variables (optional, for online search features)
 cp .env.example .env.local
 # Edit .env.local and add your Groq API key
 
@@ -96,13 +95,13 @@ npm run dev
 
 1. Enter an English word or phrase in the search box
 2. The system will first search the local dictionary for instant results
-3. If not found locally, AI-enhanced search will provide translations
+3. If not found locally, AI-enhanced online search will provide translations
 4. View detailed results including pronunciation, cultural context, and examples
 
 ### Features Available
 
 - **Without API Key**: Local dictionary search with 1000+ entries
-- **With API Key**: Enhanced AI translations, cultural context, pronunciation guides, alternative translations, and online search
+- **With API Key**: Enhanced online search, cultural context, pronunciation guides, and alternative translations
 
 ## Architecture
 
@@ -110,17 +109,16 @@ npm run dev
 
 - **Dictionary Service**: Manages local dictionary data and basic search
 - **Enhanced Dictionary Service**: Provides advanced search with indexing
-- **Parallel Search Service**: Orchestrates multi-source search (local + AI)
-- **Groq Service**: Handles AI-powered translations
+- **Parallel Search Service**: Orchestrates multi-source search (local + online)
+- **Groq Service**: Handles AI-powered online translations
 - **Cache Manager**: Intelligent caching for performance optimization
 
 ### Search Flow
 
 1. **Cache Check**: First checks for cached results
 2. **Local Search**: Searches local dictionary with fuzzy matching
-3. **AI Enhancement**: Enhances local results with cultural context and pronunciation
-4. **AI Fallback**: If no local results, uses AI for translation
-5. **Result Caching**: Caches successful results for future use
+3. **Online Search**: If no local results, uses AI for online translation
+4. **Result Caching**: Caches successful results for future use
 
 ## Security
 
@@ -132,7 +130,7 @@ npm run dev
 ## Performance
 
 - Local dictionary search: ~1-5ms response time
-- AI-enhanced search: ~500-2000ms response time
+- Online AI search: ~500-2000ms response time
 - Intelligent caching reduces repeated search times to ~1ms
 - Fuzzy search with confidence scoring for accurate results
 
@@ -167,3 +165,7 @@ This project is licensed under the MIT License.
 ## Support
 
 For support and questions, please refer to the project documentation or create an issue in the repository.
+
+---
+
+**Ibi-Voice** - A product of JR Digital Insights | Made with ❤️ in Nigeria
