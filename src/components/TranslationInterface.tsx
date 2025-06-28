@@ -333,13 +333,6 @@ const TranslationInterface = () => {
           </div>
         )}
       </div>
-
-      {/* Footer Credit - Mobile Friendly */}
-      <div className="text-center py-4 px-2 sm:px-0">
-        <p className="text-xs text-gray-500">
-          Created by <span className="font-semibold text-blue-600">JR-Solvy</span>
-        </p>
-      </div>
     </div>
   );
 };
