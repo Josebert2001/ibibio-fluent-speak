@@ -32,7 +32,11 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Set up environment variables (optional, for AI features)
+cp .env.example .env.local
+# Edit .env.local and add your Groq API key
+
+# Step 5: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
 
@@ -60,9 +64,40 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Environment Variables
+
+This application uses environment variables for configuration. For AI-powered features, you'll need to set up a Groq API key.
+
+### Local Development
+
+1. Copy `.env.example` to `.env.local`
+2. Get your Groq API key from [console.groq.com](https://console.groq.com)
+3. Add your API key to `.env.local`:
+   ```
+   VITE_GROQ_API_KEY=your_groq_api_key_here
+   ```
+
+### Vercel Deployment
+
+1. Go to your Vercel project dashboard
+2. Navigate to Settings → Environment Variables
+3. Add the following environment variable:
+   - **Name**: `VITE_GROQ_API_KEY`
+   - **Value**: Your Groq API key
+   - **Environment**: Production, Preview, Development
+4. Redeploy your application
+
+**Important**: Never commit API keys to your repository. Always use environment variables for sensitive data.
+
 ## How can I deploy this project?
 
-Simply open [Lovable](https://lovable.dev/projects/48bcfcac-3500-478b-9e1f-2a5af7fde1b9) and click on Share -> Publish.
+Simply open [Lovable](https://lovable.dev/projects/48bcfcac-3500-478b-9e1f-2a5af7fde1b9) and click on Share → Publish.
+
+For manual deployment to Vercel:
+
+1. Connect your GitHub repository to Vercel
+2. Set up the required environment variables (see above)
+3. Deploy
 
 ## Can I connect a custom domain to my Lovable project?
 
@@ -71,3 +106,13 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+
+## Features
+
+- **Ibibio Dictionary Search**: Search for English to Ibibio translations using a comprehensive dictionary
+- **AI-Powered Translation**: Enhanced translations using Groq's Llama3 model (requires API key)
+- **Smart Caching**: Intelligent caching system for faster repeated searches
+- **Multi-Source Search**: Combines local dictionary, online sources, and AI translation
+- **Cultural Context**: Provides cultural background and context for translations
+- **Voice Input**: Speech recognition for hands-free searching
+- **Performance Monitoring**: Real-time performance metrics and optimization

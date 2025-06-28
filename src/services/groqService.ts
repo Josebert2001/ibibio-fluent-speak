@@ -1,20 +1,25 @@
-
 import { GroqResponse } from '../types/dictionary';
 
 class GroqService {
-  private apiKey: string | null = null;
   private baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
-  setApiKey(key: string) {
-    this.apiKey = key;
-    localStorage.setItem('groq-api-key', key);
+  getApiKey(): string | null {
+    // First check environment variable (for production/build time)
+    const envKey = import.meta.env.VITE_GROQ_API_KEY;
+    if (envKey) {
+      return envKey;
+    }
+
+    // Fallback to localStorage for development/testing
+    const localKey = localStorage.getItem('groq-api-key');
+    return localKey;
   }
 
-  getApiKey(): string | null {
-    if (!this.apiKey) {
-      this.apiKey = localStorage.getItem('groq-api-key');
-    }
-    return this.apiKey;
+  setApiKey(key: string) {
+    // Only save to localStorage for development/testing purposes
+    // In production, this should be set as an environment variable
+    localStorage.setItem('groq-api-key', key);
+    console.log('API key saved to localStorage for development. For production, set VITE_GROQ_API_KEY environment variable.');
   }
 
   private extractJsonFromText(text: string): string {
@@ -79,7 +84,7 @@ class GroqService {
   async translateWithAI(englishQuery: string): Promise<GroqResponse> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
-      throw new Error('Groq API key not set');
+      throw new Error('Groq API key not configured. Please set VITE_GROQ_API_KEY environment variable or configure it in the setup section.');
     }
 
     const prompt = `You are an expert English to Ibibio translator. Translate the following English word or phrase to Ibibio and provide detailed information.
