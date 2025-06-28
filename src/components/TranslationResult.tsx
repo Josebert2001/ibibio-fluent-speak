@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Volume2, Heart, BookOpen, Sparkles } from 'lucide-react';
+import { Volume2, Heart, BookOpen, Sparkles, Speaker } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,10 +22,18 @@ interface TranslationResultProps {
 const TranslationResult = ({ translation, isLoading }: TranslationResultProps) => {
   const playPronunciation = () => {
     console.log('Playing pronunciation for:', translation.ibibio);
+    // In a real implementation, this would use text-to-speech or audio files
+    if ('speechSynthesis' in window && translation.ibibio) {
+      const utterance = new SpeechSynthesisUtterance(translation.ibibio);
+      utterance.lang = 'en'; // Fallback to English pronunciation
+      utterance.rate = 0.7;
+      speechSynthesis.speak(utterance);
+    }
   };
 
   const addToFavorites = () => {
     console.log('Added to favorites:', translation);
+    // In a real implementation, this would save to user favorites
   };
 
   if (isLoading) {
@@ -68,12 +75,16 @@ const TranslationResult = ({ translation, isLoading }: TranslationResultProps) =
                   size="sm"
                   onClick={playPronunciation}
                   className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                  title="Play pronunciation"
                 >
                   <Volume2 className="w-4 h-4" />
                 </Button>
               </div>
               {translation.pronunciation && (
-                <p className="text-sm text-gray-600 italic">/{translation.pronunciation}/</p>
+                <div className="flex items-center space-x-2">
+                  <Speaker className="w-4 h-4 text-gray-500" />
+                  <p className="text-sm text-gray-600 italic font-mono">{translation.pronunciation}</p>
+                </div>
               )}
             </div>
             <Button
@@ -81,6 +92,7 @@ const TranslationResult = ({ translation, isLoading }: TranslationResultProps) =
               size="sm"
               onClick={addToFavorites}
               className="text-red-500 hover:text-red-600 hover:bg-red-50"
+              title="Add to favorites"
             >
               <Heart className="w-5 h-5" />
             </Button>
@@ -101,7 +113,7 @@ const TranslationResult = ({ translation, isLoading }: TranslationResultProps) =
               </h4>
               <div className="space-y-3">
                 {translation.examples.map((example, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-4">
+                  <div key={index} className="bg-gray-50 rounded-lg p-4 border-l-4 border-blue-200">
                     <p className="text-gray-800 mb-1">{example.english}</p>
                     <p className="text-blue-700 font-medium">{example.ibibio}</p>
                   </div>
@@ -116,8 +128,8 @@ const TranslationResult = ({ translation, isLoading }: TranslationResultProps) =
                 <Sparkles className="w-4 h-4 mr-2 text-purple-600" />
                 Cultural Context
               </h4>
-              <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4">
-                <p className="text-gray-700 italic">{translation.cultural}</p>
+              <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-100">
+                <p className="text-gray-700 italic leading-relaxed">{translation.cultural}</p>
               </div>
             </div>
           )}

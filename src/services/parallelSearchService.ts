@@ -2,6 +2,12 @@ import { ChatOpenAI } from '@langchain/openai';
 import { AgentExecutor, createReactAgent } from 'langchain/agents';
 import { pull } from 'langchain/hub';
 import { createOnlineDictionaryTool, createResultValidationTool } from './onlineSearchTools';
+import { 
+  createCulturalContextTool, 
+  createPronunciationTool, 
+  createExampleSentenceTool,
+  createComprehensiveSearchTool 
+} from './langchainTools';
 import { groqService } from './groqService';
 import { dictionaryService } from './dictionaryService';
 import { cacheManager } from './cacheManager';
@@ -27,7 +33,7 @@ class ParallelSearchService {
     try {
       const apiKey = groqService.getApiKey();
       if (!apiKey) {
-        console.warn('Groq API key not available - online search disabled');
+        console.warn('Groq API key not available - enhanced search disabled');
         return;
       }
 
@@ -41,9 +47,15 @@ class ParallelSearchService {
       });
 
       const prompt = await pull<any>('hwchase17/react');
+      
+      // Enhanced tools array with new Langchain tools
       const tools = [
         createOnlineDictionaryTool(),
-        createResultValidationTool()
+        createResultValidationTool(),
+        createCulturalContextTool(),
+        createPronunciationTool(),
+        createExampleSentenceTool(),
+        createComprehensiveSearchTool()
       ];
 
       const agentRunnable = await createReactAgent({
@@ -56,13 +68,13 @@ class ParallelSearchService {
         agent: agentRunnable,
         tools,
         verbose: false,
-        maxIterations: 2,
+        maxIterations: 3,
       });
 
       this.isInitialized = true;
-      console.log('Parallel search service initialized');
+      console.log('Enhanced parallel search service initialized with', tools.length, 'tools');
     } catch (error) {
-      console.error('Failed to initialize parallel search service:', error);
+      console.error('Failed to initialize enhanced parallel search service:', error);
     }
   }
 
@@ -86,20 +98,20 @@ class ParallelSearchService {
       searchEngine.buildIndex(entries);
     }
 
-    // Parallel search execution
+    // Parallel search execution with enhanced capabilities
     const searchPromises = [
       this.searchLocal(normalizedQuery),
-      this.searchOnline(normalizedQuery)
+      this.searchEnhanced(normalizedQuery)
     ];
 
     try {
-      const [localResults, onlineResults] = await Promise.allSettled(searchPromises);
+      const [localResults, enhancedResults] = await Promise.allSettled(searchPromises);
       
       const local = localResults.status === 'fulfilled' ? localResults.value : null;
-      const online = onlineResults.status === 'fulfilled' ? onlineResults.value : null;
+      const enhanced = enhancedResults.status === 'fulfilled' ? enhancedResults.value : null;
 
-      // Reconcile results
-      const finalResult = await this.reconcileResults(normalizedQuery, local, online);
+      // Reconcile results with enhanced data
+      const finalResult = await this.reconcileEnhancedResults(normalizedQuery, local, enhanced);
       
       const result: ParallelSearchResult = {
         ...finalResult,
@@ -113,7 +125,7 @@ class ParallelSearchService {
 
       return result;
     } catch (error) {
-      console.error('Parallel search error:', error);
+      console.error('Enhanced parallel search error:', error);
       
       // Fallback to local search only
       const localResult = await this.searchLocal(normalizedQuery);
@@ -142,33 +154,42 @@ class ParallelSearchService {
     };
   }
 
-  private async searchOnline(query: string): Promise<any> {
+  private async searchEnhanced(query: string): Promise<any> {
     if (!this.isInitialized || !this.agent) {
       await this.initialize();
       if (!this.agent) {
-        throw new Error('Online search not available');
+        throw new Error('Enhanced search not available');
       }
     }
 
-    const prompt = `Search for the English to Ibibio translation of "${query}" using online dictionaries. Return structured results with confidence scores.`;
+    const prompt = `Find comprehensive information for the English to Ibibio translation of "${query}". Use all available tools to gather:
+1. Primary translation using comprehensive_search
+2. Cultural context using cultural_context
+3. Pronunciation guide using pronunciation_guide
+4. Example sentences using example_sentences
+
+Return a JSON object with all gathered information.`;
     
     const result = await this.agent!.invoke({
       input: prompt
     });
 
     try {
-      const parsed = JSON.parse(result.output);
-      return parsed.success ? parsed.results : null;
+      // Try to extract JSON from the response
+      const jsonMatch = result.output.match(/\{[\s\S]*\}/);
+      const jsonString = jsonMatch ? jsonMatch[0] : result.output;
+      const parsed = JSON.parse(jsonString);
+      return parsed;
     } catch (error) {
-      console.error('Failed to parse online search results:', error);
+      console.error('Failed to parse enhanced search results:', error);
       return null;
     }
   }
 
-  private async reconcileResults(
+  private async reconcileEnhancedResults(
     query: string,
     localResults: any,
-    onlineResults: any
+    enhancedResults: any
   ): Promise<{
     result: DictionaryEntry | null;
     confidence: number;
@@ -176,68 +197,57 @@ class ParallelSearchService {
     alternatives: DictionaryEntry[];
     sources: string[];
   }> {
-    // If we have local results, prioritize them
+    // If we have local results, enhance them with AI data
     if (localResults?.result) {
+      const enhancedEntry = { ...localResults.result };
       const alternatives = [...(localResults.alternatives || [])];
       const sources = ['local_dictionary'];
 
-      // Add online alternatives if they don't conflict
-      if (onlineResults && Array.isArray(onlineResults)) {
-        onlineResults.forEach((online: any) => {
-          if (online.ibibio !== localResults.result.ibibio) {
-            alternatives.push({
-              id: `online-${Date.now()}-${Math.random()}`,
-              english: query,
-              ibibio: online.ibibio,
-              meaning: online.meaning,
-              partOfSpeech: 'unknown',
-              examples: [],
-              cultural: `Source: ${online.sources?.join(', ') || 'online'}`
-            });
-          }
-        });
-        
-        if (onlineResults.length > 0) {
-          sources.push('online_verification');
+      // Enhance with AI-generated data if available
+      if (enhancedResults) {
+        if (enhancedResults.cultural) {
+          enhancedEntry.cultural = enhancedResults.cultural;
+          sources.push('ai_cultural_context');
+        }
+        if (enhancedResults.pronunciation) {
+          enhancedEntry.pronunciation = enhancedResults.pronunciation;
+          sources.push('ai_pronunciation');
+        }
+        if (enhancedResults.examples && enhancedResults.examples.length > 0) {
+          enhancedEntry.examples = [
+            ...(enhancedEntry.examples || []),
+            ...enhancedResults.examples
+          ].slice(0, 3); // Limit to 3 examples
+          sources.push('ai_examples');
         }
       }
 
       return {
-        result: localResults.result,
-        confidence: Math.min(100, localResults.confidence + (onlineResults ? 5 : 0)),
-        source: 'local_primary',
-        alternatives: alternatives.slice(0, 4),
+        result: enhancedEntry,
+        confidence: Math.min(100, localResults.confidence + (enhancedResults ? 10 : 0)),
+        source: 'enhanced_local',
+        alternatives: alternatives.slice(0, 3),
         sources
       };
     }
 
-    // If no local results but we have online results
-    if (onlineResults && Array.isArray(onlineResults) && onlineResults.length > 0) {
-      const primary = onlineResults[0];
-      
+    // If no local results but we have enhanced AI results
+    if (enhancedResults && enhancedResults.ibibio) {
       return {
         result: {
-          id: `online-${Date.now()}`,
+          id: `enhanced-ai-${Date.now()}`,
           english: query,
-          ibibio: primary.ibibio,
-          meaning: primary.meaning,
+          ibibio: enhancedResults.ibibio,
+          meaning: enhancedResults.meaning || `AI-generated translation for ${query}`,
           partOfSpeech: 'unknown',
-          examples: [],
-          pronunciation: primary.pronunciation,
-          cultural: `Sources: ${primary.sources?.join(', ') || 'online dictionaries'}`
+          examples: enhancedResults.examples || [],
+          pronunciation: enhancedResults.pronunciation,
+          cultural: enhancedResults.cultural || 'AI-enhanced cultural context'
         },
-        confidence: Math.round(primary.combinedConfidence * 100),
-        source: 'online_primary',
-        alternatives: onlineResults.slice(1, 4).map((result: any) => ({
-          id: `online-alt-${Date.now()}-${Math.random()}`,
-          english: query,
-          ibibio: result.ibibio,
-          meaning: result.meaning,
-          partOfSpeech: 'unknown',
-          examples: [],
-          cultural: `Sources: ${result.sources?.join(', ') || 'online'}`
-        })),
-        sources: primary.sources || ['online_dictionaries']
+        confidence: 85,
+        source: 'ai_enhanced',
+        alternatives: [],
+        sources: ['ai_translation', 'ai_cultural_context', 'ai_pronunciation']
       };
     }
 
@@ -254,8 +264,9 @@ class ParallelSearchService {
   getStats() {
     return {
       cacheStats: cacheManager.getStats(),
-      isOnlineEnabled: this.isInitialized,
-      searchEngineReady: !!searchEngine
+      isEnhancedEnabled: this.isInitialized,
+      searchEngineReady: !!searchEngine,
+      toolsAvailable: this.isInitialized ? 6 : 0
     };
   }
 }
