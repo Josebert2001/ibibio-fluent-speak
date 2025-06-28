@@ -31,14 +31,22 @@ const TranslationInterface = () => {
     { english: 'hello', ibibio: 'nno', meaning: 'A greeting; expression of welcome' },
     { english: 'love', ibibio: 'uduak', meaning: 'Deep affection or care for someone' },
     { english: 'water', ibibio: 'mmong', meaning: 'Clear liquid essential for life' },
+    { english: 'god', ibibio: 'abasi', meaning: 'The supreme deity; creator and sustainer of all life' },
   ]);
 
   useEffect(() => {
     // Load dictionary on component mount
     const initializeDictionary = async () => {
       try {
+        console.log('Initializing dictionary services...');
+        await dictionaryService.loadDictionary();
         await enhancedDictionaryService.loadDictionary();
-        console.log('Dictionary initialized');
+        
+        // Verify God/Abasi is in the dictionary
+        const godEntry = dictionaryService.search('god');
+        console.log('God entry found:', godEntry);
+        
+        console.log('Dictionary initialized successfully');
       } catch (error) {
         console.error('Failed to initialize dictionary:', error);
       }
@@ -60,32 +68,42 @@ const TranslationInterface = () => {
     const startTime = performance.now();
     
     try {
+      console.log('=== SEARCH DEBUG ===');
       console.log('Searching for:', query);
+      console.log('Dictionary stats:', dictionaryService.getStats());
       
-      // First try enhanced dictionary service
-      let result = enhancedDictionaryService.search(query);
-      let source = 'local_dictionary';
+      // Force reload dictionary if not loaded
+      if (!dictionaryService.getStats().isLoaded) {
+        console.log('Dictionary not loaded, forcing reload...');
+        await dictionaryService.loadDictionary();
+      }
+      
+      // Try direct search in basic dictionary service first
+      let result = dictionaryService.search(query);
+      let source = 'basic_dictionary';
       let searchConfidence = 1.0;
       let alternativeResults: DictionaryEntry[] = [];
       
+      console.log('Basic dictionary result:', result);
+      
       if (result) {
-        console.log('Found in enhanced dictionary:', result);
-        
-        // Get alternatives from fuzzy search
-        const fuzzyResults = enhancedDictionaryService.searchFuzzy(query, 5);
-        alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
-        
+        console.log('Found in basic dictionary:', result);
+        source = 'basic_dictionary';
       } else {
-        console.log('Not found in enhanced dictionary, trying basic search...');
+        console.log('Not found in basic dictionary, trying enhanced...');
         
-        // Try basic dictionary service
-        result = dictionaryService.search(query);
+        // Try enhanced dictionary service
+        result = enhancedDictionaryService.search(query);
         
         if (result) {
-          console.log('Found in basic dictionary:', result);
-          source = 'basic_dictionary';
+          console.log('Found in enhanced dictionary:', result);
+          source = 'enhanced_dictionary';
+          
+          // Get alternatives from fuzzy search
+          const fuzzyResults = enhancedDictionaryService.searchFuzzy(query, 5);
+          alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
         } else {
-          console.log('Not found in basic dictionary either');
+          console.log('Not found in enhanced dictionary either, trying fuzzy search...');
           
           // Try fuzzy search as last resort
           const fuzzyResults = dictionaryService.searchFuzzy(query, 5);
@@ -95,6 +113,17 @@ const TranslationInterface = () => {
             source = 'fuzzy_search';
             alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
             console.log('Found via fuzzy search:', result);
+          } else {
+            console.log('No fuzzy results found');
+            
+            // Debug: Let's see what's actually in the dictionary
+            const allEntries = dictionaryService.getAllEntries();
+            console.log('Total dictionary entries:', allEntries.length);
+            console.log('Sample entries:', allEntries.slice(0, 5).map(e => ({ english: e.english, ibibio: e.ibibio })));
+            
+            // Check if God is specifically in there
+            const godEntries = allEntries.filter(e => e.english.toLowerCase().includes('god'));
+            console.log('God-related entries:', godEntries);
           }
         }
       }
@@ -123,9 +152,9 @@ const TranslationInterface = () => {
         console.log('Search completed successfully');
       } else {
         setCurrentTranslation(null);
-        setSearchError(`No translation found for "${query}". Try a different word or check the dictionary.`);
+        setSearchError(`No translation found for "${query}". The word may not be in the dictionary yet.`);
         setResponseTime(searchTime);
-        console.log('No translation found');
+        console.log('No translation found anywhere');
       }
 
     } catch (error) {
@@ -141,7 +170,7 @@ const TranslationInterface = () => {
   const runPerformanceTest = async () => {
     setIsLoading(true);
     try {
-      const testQueries = ['hello', 'water', 'love', 'family', 'house', 'food', 'good', 'thank you'];
+      const testQueries = ['hello', 'water', 'love', 'family', 'house', 'food', 'good', 'thank you', 'god'];
       const testResults = await enhancedDictionaryService.performanceTest(testQueries);
       console.log('Performance test results:', testResults);
       
@@ -159,15 +188,15 @@ const TranslationInterface = () => {
 
   const getSourceLabel = (source: string) => {
     switch (source) {
-      case 'local_dictionary': return 'Enhanced Dictionary';
       case 'basic_dictionary': return 'Basic Dictionary';
+      case 'enhanced_dictionary': return 'Enhanced Dictionary';
       case 'fuzzy_search': return 'Fuzzy Search';
       case 'cache': return 'Cached Result';
       default: return source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
   };
 
-  const stats = enhancedDictionaryService.getStats();
+  const stats = dictionaryService.getStats();
   const hasApiKey = !!groqService.getApiKey();
 
   return (
@@ -272,7 +301,6 @@ const TranslationInterface = () => {
             <div className="text-center p-4 bg-green-50 rounded-lg">
               <p className="text-sm text-green-700">
                 Dictionary loaded: <span className="font-semibold">{stats.totalEntries} entries</span>
-                {stats.isIndexed && <span className="ml-2">• Search index ready</span>}
                 {stats.categories.length > 0 && (
                   <span className="ml-2">• Categories: {stats.categories.join(', ')}</span>
                 )}

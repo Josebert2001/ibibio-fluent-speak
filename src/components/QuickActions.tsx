@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Sparkles, Clock, Book } from 'lucide-react';
@@ -15,6 +14,8 @@ const QuickActions = ({ onQuickSearch }: QuickActionsProps) => {
     { text: 'love', label: 'Emotions' },
     { text: 'family', label: 'Relationships' },
     { text: 'water', label: 'Nature' },
+    { text: 'god', label: 'Spiritual' },
+    { text: 'food', label: 'Daily Life' },
   ];
 
   return (
