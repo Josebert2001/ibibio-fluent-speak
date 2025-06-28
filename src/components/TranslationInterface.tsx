@@ -8,7 +8,7 @@ import RecentSearches from './RecentSearches';
 import DictionaryUpload from './DictionaryUpload';
 import ApiKeySetup from './ApiKeySetup';
 import { enhancedDictionaryService } from '../services/enhancedDictionaryService';
-import { intelligentSearchV2 } from '../services/intelligentSearchV2';
+import { dictionaryService } from '../services/dictionaryService';
 import { groqService } from '../services/groqService';
 import { DictionaryEntry } from '../types/dictionary';
 
@@ -31,12 +31,17 @@ const TranslationInterface = () => {
   ]);
 
   useEffect(() => {
-    // Load enhanced dictionary on component mount
-    enhancedDictionaryService.loadDictionary();
+    // Load dictionary on component mount
+    const initializeDictionary = async () => {
+      try {
+        await enhancedDictionaryService.loadDictionary();
+        console.log('Dictionary initialized');
+      } catch (error) {
+        console.error('Failed to initialize dictionary:', error);
+      }
+    };
     
-    // Load performance metrics
-    const metrics = intelligentSearchV2.getPerformanceMetrics();
-    setPerformanceMetrics(metrics);
+    initializeDictionary();
   }, []);
 
   const handleSearch = async (query: string) => {
@@ -49,39 +54,82 @@ const TranslationInterface = () => {
     setAlternatives([]);
     setSources([]);
     
+    const startTime = performance.now();
+    
     try {
-      const result = await intelligentSearchV2.search(query);
+      console.log('Searching for:', query);
       
-      if (result.result) {
-        setCurrentTranslation(result.result);
-        setSearchSource(result.source);
-        setConfidence(result.confidence / 100);
-        setAlternatives(result.alternatives);
-        setSources(result.sources);
-        setResponseTime(result.responseTime);
+      // First try enhanced dictionary service
+      let result = enhancedDictionaryService.search(query);
+      let source = 'local_dictionary';
+      let searchConfidence = 1.0;
+      let alternativeResults: DictionaryEntry[] = [];
+      
+      if (result) {
+        console.log('Found in enhanced dictionary:', result);
+        
+        // Get alternatives from fuzzy search
+        const fuzzyResults = enhancedDictionaryService.searchFuzzy(query, 5);
+        alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
+        
+      } else {
+        console.log('Not found in enhanced dictionary, trying basic search...');
+        
+        // Try basic dictionary service
+        result = dictionaryService.search(query);
+        
+        if (result) {
+          console.log('Found in basic dictionary:', result);
+          source = 'basic_dictionary';
+        } else {
+          console.log('Not found in basic dictionary either');
+          
+          // Try fuzzy search as last resort
+          const fuzzyResults = dictionaryService.searchFuzzy(query, 5);
+          if (fuzzyResults.length > 0) {
+            result = fuzzyResults[0].entry;
+            searchConfidence = fuzzyResults[0].confidence;
+            source = 'fuzzy_search';
+            alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
+            console.log('Found via fuzzy search:', result);
+          }
+        }
+      }
+      
+      const endTime = performance.now();
+      const searchTime = endTime - startTime;
+      
+      if (result) {
+        setCurrentTranslation(result);
+        setSearchSource(source);
+        setConfidence(searchConfidence);
+        setAlternatives(alternativeResults);
+        setSources([source]);
+        setResponseTime(searchTime);
         
         // Add to recent searches
         setRecentSearches(prev => {
           const newSearch = { 
             english: query, 
-            ibibio: result.result!.ibibio, 
-            meaning: result.result!.meaning 
+            ibibio: result!.ibibio, 
+            meaning: result!.meaning 
           };
-          return [newSearch, ...prev.filter(item => item.english !== query)].slice(0, 5);
+          return [newSearch, ...prev.filter(item => item.english.toLowerCase() !== query.toLowerCase())].slice(0, 5);
         });
+        
+        console.log('Search completed successfully');
       } else {
         setCurrentTranslation(null);
-        setSearchError(result.error || 'No translation found');
-        setResponseTime(result.responseTime);
+        setSearchError(`No translation found for "${query}". Try a different word or check the dictionary.`);
+        setResponseTime(searchTime);
+        console.log('No translation found');
       }
 
-      // Update performance metrics
-      const updatedMetrics = intelligentSearchV2.getPerformanceMetrics();
-      setPerformanceMetrics(updatedMetrics);
     } catch (error) {
       console.error('Search error:', error);
       setCurrentTranslation(null);
       setSearchError('An unexpected error occurred during search.');
+      setResponseTime(performance.now() - startTime);
     } finally {
       setIsLoading(false);
     }
@@ -90,12 +138,15 @@ const TranslationInterface = () => {
   const runPerformanceTest = async () => {
     setIsLoading(true);
     try {
-      const testResults = await intelligentSearchV2.runPerformanceTest();
+      const testQueries = ['hello', 'water', 'love', 'family', 'house', 'food', 'good', 'thank you'];
+      const testResults = await enhancedDictionaryService.performanceTest(testQueries);
       console.log('Performance test results:', testResults);
       
-      // Update metrics after test
-      const updatedMetrics = intelligentSearchV2.getPerformanceMetrics();
-      setPerformanceMetrics(updatedMetrics);
+      setPerformanceMetrics({
+        averageResponseTime: testResults.averageTime,
+        successRate: (testResults.results.filter(r => r.found).length / testResults.results.length) * 100,
+        totalSearches: testResults.results.length
+      });
     } catch (error) {
       console.error('Performance test failed:', error);
     } finally {
@@ -105,9 +156,9 @@ const TranslationInterface = () => {
 
   const getSourceLabel = (source: string) => {
     switch (source) {
-      case 'local_primary': return 'Local Dictionary (Verified)';
-      case 'online_primary': return 'Online Sources';
-      case 'fallback': return 'Fallback Search';
+      case 'local_dictionary': return 'Enhanced Dictionary';
+      case 'basic_dictionary': return 'Basic Dictionary';
+      case 'fuzzy_search': return 'Fuzzy Search';
       case 'cache': return 'Cached Result';
       default: return source.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
     }
@@ -121,16 +172,16 @@ const TranslationInterface = () => {
       {/* Hero Section */}
       <div className="text-center space-y-4 py-8">
         <h2 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-          Enhanced Ibibio Search
+          Ibibio Dictionary Search
         </h2>
         <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-          Intelligent parallel search with local dictionary, online sources, and AI-powered translations. 
-          Optimized for speed and accuracy.
+          Search for English to Ibibio translations using our comprehensive dictionary. 
+          Fast, accurate, and culturally aware translations.
         </p>
         
         {/* Performance Metrics */}
         {performanceMetrics && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
             <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-gray-200">
               <div className="flex items-center space-x-2">
                 <TrendingUp className="w-4 h-4 text-green-600" />
@@ -147,17 +198,7 @@ const TranslationInterface = () => {
                 <span className="text-sm font-medium text-gray-700">Avg Response</span>
               </div>
               <p className="text-2xl font-bold text-blue-600">
-                {performanceMetrics.averageResponseTime.toFixed(0)}ms
-              </p>
-            </div>
-            
-            <div className="bg-white/60 backdrop-blur-sm rounded-lg p-4 border border-gray-200">
-              <div className="flex items-center space-x-2">
-                <Target className="w-4 h-4 text-purple-600" />
-                <span className="text-sm font-medium text-gray-700">Total Searches</span>
-              </div>
-              <p className="text-2xl font-bold text-purple-600">
-                {performanceMetrics.totalSearches}
+                {performanceMetrics.averageResponseTime.toFixed(1)}ms
               </p>
             </div>
             
@@ -185,13 +226,13 @@ const TranslationInterface = () => {
         </Button>
       </div>
 
-      {/* API Key Warning */}
+      {/* API Key Info */}
       {!hasApiKey && (
-        <div className="flex items-center space-x-2 text-orange-600 bg-orange-50 p-4 rounded-lg border border-orange-200">
+        <div className="flex items-center space-x-2 text-blue-600 bg-blue-50 p-4 rounded-lg border border-blue-200">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <div className="text-sm">
-            <p className="font-medium">Enhanced features available with API key</p>
-            <p>Local dictionary search is active. Add Groq API key for online search and AI translations.</p>
+            <p className="font-medium">Dictionary search is active</p>
+            <p>Add Groq API key in setup for enhanced AI-powered translations and online search.</p>
           </div>
         </div>
       )}
@@ -206,9 +247,9 @@ const TranslationInterface = () => {
 
       {/* Dictionary Stats */}
       {stats.isLoaded && (
-        <div className="text-center p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-blue-700">
-            Enhanced dictionary: <span className="font-semibold">{stats.totalEntries} entries</span>
+        <div className="text-center p-4 bg-green-50 rounded-lg">
+          <p className="text-sm text-green-700">
+            Dictionary loaded: <span className="font-semibold">{stats.totalEntries} entries</span>
             {stats.isIndexed && <span className="ml-2">• Search index ready</span>}
             {stats.categories.length > 0 && (
               <span className="ml-2">• Categories: {stats.categories.join(', ')}</span>
@@ -221,7 +262,7 @@ const TranslationInterface = () => {
       <SearchBar 
         onSearch={handleSearch}
         isLoading={isLoading}
-        placeholder="Enter English word or phrase for enhanced search..."
+        placeholder="Enter English word or phrase to translate to Ibibio..."
       />
 
       {/* Quick Actions */}
@@ -246,7 +287,7 @@ const TranslationInterface = () => {
               <span>•</span>
               <span>Confidence: {(confidence * 100).toFixed(0)}%</span>
               <span>•</span>
-              <span>Response: {responseTime.toFixed(0)}ms</span>
+              <span>Response: {responseTime.toFixed(1)}ms</span>
               {sources.length > 0 && (
                 <>
                   <span>•</span>
