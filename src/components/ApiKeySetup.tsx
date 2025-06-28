@@ -49,17 +49,17 @@ const ApiKeySetup = () => {
       <CardHeader>
         <CardTitle className="flex items-center">
           <Key className="w-5 h-5 mr-2" />
-          Groq API Configuration
+          AI Enhancement Configuration
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Environment Variable Info */}
+        {/* Production Environment Info */}
         <Alert>
           <Info className="h-4 w-4" />
           <AlertDescription>
-            <strong>For Production:</strong> Set the <code className="bg-gray-100 px-1 rounded">VITE_GROQ_API_KEY</code> environment variable in your Vercel deployment settings.
+            <strong>Production Setup:</strong> The application uses environment variables for secure API key management.
             <br />
-            <strong>For Development:</strong> You can temporarily set the API key below for testing.
+            <strong>Development/Testing:</strong> You can temporarily configure an API key below for testing enhanced features.
           </AlertDescription>
         </Alert>
 
@@ -68,7 +68,7 @@ const ApiKeySetup = () => {
             <div className="flex items-center space-x-2 text-green-600 bg-green-50 p-3 rounded-lg">
               <CheckCircle className="w-4 h-4" />
               <span className="text-sm">
-                API key configured successfully {isEnvKey ? '(from environment variable)' : '(from localStorage)'}
+                API key configured successfully {isEnvKey ? '(production environment)' : '(development mode)'}
               </span>
             </div>
             <div className="flex items-center space-x-2">
@@ -86,7 +86,7 @@ const ApiKeySetup = () => {
             </div>
             {isEnvKey && (
               <p className="text-xs text-gray-500">
-                This API key is set via environment variable and cannot be changed from the UI.
+                This API key is configured via environment variable for production security.
               </p>
             )}
           </div>
@@ -94,12 +94,12 @@ const ApiKeySetup = () => {
           <div className="space-y-3">
             <div className="flex items-center space-x-2 text-orange-600 bg-orange-50 p-3 rounded-lg">
               <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">Groq API key required for AI-powered translations</span>
+              <span className="text-sm">Groq API key required for AI-enhanced translations</span>
             </div>
             <div className="flex items-center space-x-2">
               <Input
                 type="password"
-                placeholder="Enter your Groq API key (for development only)"
+                placeholder="Enter your Groq API key (development only)"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
               />
@@ -115,36 +115,40 @@ const ApiKeySetup = () => {
           </div>
         )}
 
-        {/* Vercel Deployment Instructions */}
+        {/* Production Deployment Instructions */}
         <div className="border-t pt-4">
-          <h4 className="font-semibold text-gray-800 mb-3">Vercel Environment Variable Setup</h4>
+          <h4 className="font-semibold text-gray-800 mb-3">Production Environment Setup</h4>
           <div className="space-y-2 text-sm text-gray-600">
-            <p><strong>Step 1:</strong> Go to your Vercel project dashboard</p>
-            <p><strong>Step 2:</strong> Navigate to Settings → Environment Variables</p>
-            <p><strong>Step 3:</strong> Add a new environment variable:</p>
-            <div className="bg-gray-50 p-3 rounded-lg font-mono text-xs">
-              <div>Name: <code className="bg-white px-1 rounded">VITE_GROQ_API_KEY</code></div>
-              <div>Value: <code className="bg-white px-1 rounded">your_groq_api_key_here</code></div>
-              <div>Environment: <code className="bg-white px-1 rounded">Production, Preview, Development</code></div>
-            </div>
-            <p><strong>Step 4:</strong> Redeploy your application</p>
-            <p className="text-orange-600">
-              <strong>Important:</strong> Never commit API keys to your repository. Always use environment variables for sensitive data.
+            <p><strong>Vercel Deployment:</strong></p>
+            <ol className="list-decimal list-inside space-y-1 ml-4">
+              <li>Go to your Vercel project dashboard</li>
+              <li>Navigate to Settings → Environment Variables</li>
+              <li>Add: <code className="bg-gray-100 px-1 rounded">VITE_GROQ_API_KEY</code> = your_api_key</li>
+              <li>Set for: Production, Preview, Development</li>
+              <li>Redeploy your application</li>
+            </ol>
+            
+            <p className="mt-3"><strong>Other Platforms:</strong></p>
+            <p>Set the environment variable <code className="bg-gray-100 px-1 rounded">VITE_GROQ_API_KEY</code> in your hosting platform's environment configuration.</p>
+            
+            <p className="text-orange-600 mt-3">
+              <strong>Security:</strong> Never commit API keys to your repository. Always use environment variables for production deployments.
             </p>
           </div>
         </div>
 
-        {/* Local Development Instructions */}
+        {/* Features Enabled */}
         <div className="border-t pt-4">
-          <h4 className="font-semibold text-gray-800 mb-3">Local Development Setup</h4>
+          <h4 className="font-semibold text-gray-800 mb-3">Enhanced Features</h4>
           <div className="space-y-2 text-sm text-gray-600">
-            <p>For local development, create a <code className="bg-gray-100 px-1 rounded">.env.local</code> file in your project root:</p>
-            <div className="bg-gray-50 p-3 rounded-lg font-mono text-xs">
-              <code>VITE_GROQ_API_KEY=your_groq_api_key_here</code>
-            </div>
-            <p className="text-orange-600">
-              <strong>Note:</strong> Add <code className="bg-gray-100 px-1 rounded">.env.local</code> to your <code className="bg-gray-100 px-1 rounded">.gitignore</code> file to prevent accidental commits.
-            </p>
+            <p>With API key configured, you get access to:</p>
+            <ul className="list-disc list-inside space-y-1 ml-4">
+              <li>AI-powered translation for words not in local dictionary</li>
+              <li>Cultural context and pronunciation guides</li>
+              <li>Example sentences and usage patterns</li>
+              <li>Online dictionary integration</li>
+              <li>Enhanced search with multiple sources</li>
+            </ul>
           </div>
         </div>
       </CardContent>

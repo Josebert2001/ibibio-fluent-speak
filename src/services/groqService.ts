@@ -4,7 +4,7 @@ class GroqService {
   private baseUrl = 'https://api.groq.com/openai/v1/chat/completions';
 
   getApiKey(): string | null {
-    // First check environment variable (for production/build time)
+    // First check environment variable (production)
     const envKey = import.meta.env.VITE_GROQ_API_KEY;
     if (envKey) {
       return envKey;
@@ -17,28 +17,23 @@ class GroqService {
 
   setApiKey(key: string) {
     // Only save to localStorage for development/testing purposes
-    // In production, this should be set as an environment variable
     localStorage.setItem('groq-api-key', key);
-    console.log('API key saved to localStorage for development. For production, set VITE_GROQ_API_KEY environment variable.');
+    console.log('API key saved for development. For production, set VITE_GROQ_API_KEY environment variable.');
   }
 
   private extractJsonFromText(text: string): string {
     console.log('Raw response content:', text);
     
-    // Try to find JSON content within the response
-    // Look for content between { and } (including nested objects)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       return jsonMatch[0];
     }
 
-    // If no JSON block found, try to find content between ```json and ```
     const codeBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
     if (codeBlockMatch) {
       return codeBlockMatch[1];
     }
 
-    // If no structured format, try to extract from lines that look like JSON
     const lines = text.split('\n');
     let jsonStart = -1;
     let jsonEnd = -1;
@@ -58,7 +53,6 @@ class GroqService {
       return lines.slice(jsonStart, jsonEnd + 1).join('\n');
     }
 
-    // Fallback: return the original text
     return text;
   }
 
@@ -66,7 +60,6 @@ class GroqService {
     try {
       const parsed = JSON.parse(jsonText);
       
-      // Validate the structure and provide defaults
       return {
         ibibio: parsed.ibibio || '',
         meaning: parsed.meaning || '',
@@ -142,7 +135,6 @@ Focus on accuracy and cultural appropriateness. If you're not confident about th
         throw new Error('No response from Groq API');
       }
 
-      // Extract and parse JSON from the response
       const jsonText = this.extractJsonFromText(content);
       return this.validateAndParseJson(jsonText);
     } catch (error) {

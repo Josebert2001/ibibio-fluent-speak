@@ -33,13 +33,14 @@ class ParallelSearchService {
     try {
       const apiKey = groqService.getApiKey();
       if (!apiKey) {
-        console.warn('Groq API key not available - enhanced search disabled');
+        console.log('Groq API key not available - using local search only');
+        this.isInitialized = true; // Mark as initialized for local-only mode
         return;
       }
 
       const llm = new ChatOpenAI({
         modelName: 'llama3-8b-8192',
-        temperature: 0.05, // Reduced for faster responses
+        temperature: 0.05,
         openAIApiKey: apiKey,
         configuration: {
           baseURL: 'https://api.groq.com/openai/v1'
@@ -48,7 +49,6 @@ class ParallelSearchService {
 
       const prompt = await pull<any>('hwchase17/react');
       
-      // Enhanced tools array with new Langchain tools
       const tools = [
         createOnlineDictionaryTool(),
         createResultValidationTool(),
@@ -68,13 +68,14 @@ class ParallelSearchService {
         agent: agentRunnable,
         tools,
         verbose: false,
-        maxIterations: 2, // Reduced from 3 for faster responses
+        maxIterations: 2,
       });
 
       this.isInitialized = true;
-      console.log('Enhanced parallel search service initialized with', tools.length, 'tools');
+      console.log('Enhanced parallel search service initialized with AI capabilities');
     } catch (error) {
-      console.error('Failed to initialize enhanced parallel search service:', error);
+      console.error('Failed to initialize AI features, falling back to local search:', error);
+      this.isInitialized = true; // Still mark as initialized for local-only mode
     }
   }
 
@@ -98,43 +99,97 @@ class ParallelSearchService {
       searchEngine.buildIndex(entries);
     }
 
-    // Parallel search execution with enhanced capabilities
-    const searchPromises = [
-      this.searchLocal(normalizedQuery),
-      this.searchEnhanced(normalizedQuery)
-    ];
-
     try {
-      const [localResults, enhancedResults] = await Promise.allSettled(searchPromises);
+      // Always try local search first
+      const localResults = await this.searchLocal(normalizedQuery);
       
-      const local = localResults.status === 'fulfilled' ? localResults.value : null;
-      const enhanced = enhancedResults.status === 'fulfilled' ? enhancedResults.value : null;
+      // If we have a good local result, enhance it if AI is available
+      if (localResults.result && this.agent) {
+        try {
+          const enhancedResults = await this.searchEnhanced(normalizedQuery);
+          const finalResult = await this.reconcileEnhancedResults(normalizedQuery, localResults, enhancedResults);
+          
+          const result: ParallelSearchResult = {
+            ...finalResult,
+            responseTime: Date.now() - startTime
+          };
 
-      // Reconcile results with enhanced data
-      const finalResult = await this.reconcileEnhancedResults(normalizedQuery, local, enhanced);
-      
-      const result: ParallelSearchResult = {
-        ...finalResult,
+          // Cache successful results
+          if (result.result) {
+            cacheManager.set(normalizedQuery, result, result.source);
+          }
+
+          return result;
+        } catch (aiError) {
+          console.warn('AI enhancement failed, using local result:', aiError);
+          // Return local result if AI enhancement fails
+          return {
+            result: localResults.result,
+            confidence: localResults.confidence,
+            source: 'local_primary',
+            alternatives: localResults.alternatives,
+            sources: ['local_dictionary'],
+            responseTime: Date.now() - startTime
+          };
+        }
+      }
+
+      // If no local result and AI is available, try AI-only search
+      if (!localResults.result && this.agent) {
+        try {
+          const aiResults = await this.searchEnhanced(normalizedQuery);
+          if (aiResults && aiResults.ibibio) {
+            const result: ParallelSearchResult = {
+              result: {
+                id: `ai-only-${Date.now()}`,
+                english: query,
+                ibibio: aiResults.ibibio,
+                meaning: aiResults.meaning || `AI-generated translation for ${query}`,
+                partOfSpeech: 'unknown',
+                examples: aiResults.examples || [],
+                pronunciation: aiResults.pronunciation,
+                cultural: aiResults.cultural || 'AI-enhanced translation'
+              },
+              confidence: 75,
+              source: 'ai_primary',
+              alternatives: [],
+              sources: ['ai_translation'],
+              responseTime: Date.now() - startTime
+            };
+
+            // Cache AI result
+            if (result.result) {
+              cacheManager.set(normalizedQuery, result, result.source);
+            }
+
+            return result;
+          }
+        } catch (aiError) {
+          console.warn('AI search failed:', aiError);
+        }
+      }
+
+      // Return local result or empty result
+      return {
+        result: localResults.result,
+        confidence: localResults.confidence,
+        source: localResults.result ? 'local_primary' : 'none',
+        alternatives: localResults.alternatives,
+        sources: localResults.result ? ['local_dictionary'] : [],
         responseTime: Date.now() - startTime
       };
 
-      // Cache successful results
-      if (result.result) {
-        cacheManager.set(normalizedQuery, result, result.source);
-      }
-
-      return result;
     } catch (error) {
-      console.error('Enhanced parallel search error:', error);
+      console.error('Search error:', error);
       
-      // Fallback to local search only
-      const localResult = await this.searchLocal(normalizedQuery);
+      // Fallback to basic local search
+      const fallbackResult = dictionaryService.search(normalizedQuery);
       return {
-        result: localResult?.result || null,
-        confidence: localResult?.confidence || 0,
+        result: fallbackResult,
+        confidence: fallbackResult ? 80 : 0,
         source: 'local_fallback',
-        alternatives: localResult?.alternatives || [],
-        sources: ['local_dictionary'],
+        alternatives: [],
+        sources: fallbackResult ? ['local_dictionary'] : [],
         responseTime: Date.now() - startTime
       };
     }
@@ -155,28 +210,23 @@ class ParallelSearchService {
   }
 
   private async searchEnhanced(query: string): Promise<any> {
-    if (!this.isInitialized || !this.agent) {
-      await this.initialize();
-      if (!this.agent) {
-        throw new Error('Enhanced search not available');
-      }
+    if (!this.agent) {
+      throw new Error('AI enhancement not available');
     }
 
-    // Optimized prompt for faster processing
     const prompt = `Find Ibibio translation for "${query}". Return concise JSON with translation, cultural context, and pronunciation.`;
     
-    const result = await this.agent!.invoke({
+    const result = await this.agent.invoke({
       input: prompt
     });
 
     try {
-      // Try to extract JSON from the response
       const jsonMatch = result.output.match(/\{[\s\S]*\}/);
       const jsonString = jsonMatch ? jsonMatch[0] : result.output;
       const parsed = JSON.parse(jsonString);
       return parsed;
     } catch (error) {
-      console.error('Failed to parse enhanced search results:', error);
+      console.error('Failed to parse AI response:', error);
       return null;
     }
   }
@@ -192,13 +242,12 @@ class ParallelSearchService {
     alternatives: DictionaryEntry[];
     sources: string[];
   }> {
-    // If we have local results, enhance them with AI data
     if (localResults?.result) {
       const enhancedEntry = { ...localResults.result };
       const alternatives = [...(localResults.alternatives || [])];
       const sources = ['local_dictionary'];
 
-      // Enhance with AI-generated data if available
+      // Enhance with AI data if available
       if (enhancedResults) {
         if (enhancedResults.cultural) {
           enhancedEntry.cultural = enhancedResults.cultural;
@@ -212,7 +261,7 @@ class ParallelSearchService {
           enhancedEntry.examples = [
             ...(enhancedEntry.examples || []),
             ...enhancedResults.examples
-          ].slice(0, 3); // Limit to 3 examples
+          ].slice(0, 3);
           sources.push('ai_examples');
         }
       }
@@ -226,27 +275,6 @@ class ParallelSearchService {
       };
     }
 
-    // If no local results but we have enhanced AI results
-    if (enhancedResults && enhancedResults.ibibio) {
-      return {
-        result: {
-          id: `enhanced-ai-${Date.now()}`,
-          english: query,
-          ibibio: enhancedResults.ibibio,
-          meaning: enhancedResults.meaning || `AI-generated translation for ${query}`,
-          partOfSpeech: 'unknown',
-          examples: enhancedResults.examples || [],
-          pronunciation: enhancedResults.pronunciation,
-          cultural: enhancedResults.cultural || 'AI-enhanced cultural context'
-        },
-        confidence: 85,
-        source: 'ai_enhanced',
-        alternatives: [],
-        sources: ['ai_translation', 'ai_cultural_context', 'ai_pronunciation']
-      };
-    }
-
-    // No results found
     return {
       result: null,
       confidence: 0,
@@ -259,9 +287,9 @@ class ParallelSearchService {
   getStats() {
     return {
       cacheStats: cacheManager.getStats(),
-      isEnhancedEnabled: this.isInitialized,
+      isAiEnabled: this.isInitialized && !!this.agent,
       searchEngineReady: !!searchEngine,
-      toolsAvailable: this.isInitialized ? 6 : 0
+      toolsAvailable: this.isInitialized && this.agent ? 6 : 0
     };
   }
 }
