@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Upload, FileText, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -43,30 +42,31 @@ const DictionaryUpload = () => {
         throw new Error('Unsupported file format. Please use JSON or CSV.');
       }
 
-      // Validate and transform data
+      // Validate and transform data with support for custom field names
       const entries: DictionaryEntry[] = data.map((item, index) => ({
         id: item.id || `entry-${index}`,
-        english: item.english || item.English || '',
-        ibibio: item.ibibio || item.Ibibio || '',
-        meaning: item.meaning || item.Meaning || '',
-        partOfSpeech: item.partOfSpeech || item.part_of_speech || item['Part of Speech'] || 'unknown',
+        // Support multiple field name variations
+        english: item.english || item.English || item.english_definition || item.english_word || '',
+        ibibio: item.ibibio || item.Ibibio || item.ibibio_word || item.ibibio_translation || '',
+        meaning: item.meaning || item.Meaning || item.english_definition || item.definition || '',
+        partOfSpeech: item.partOfSpeech || item.part_of_speech || item['Part of Speech'] || item.pos || 'unknown',
         examples: item.examples || [],
-        pronunciation: item.pronunciation || item.Pronunciation || '',
-        cultural: item.cultural || item.Cultural || '',
-        category: item.category || item.Category || ''
+        pronunciation: item.pronunciation || item.Pronunciation || item.phonetic || '',
+        cultural: item.cultural || item.Cultural || item.context || '',
+        category: item.category || item.Category || item.type || ''
       }));
 
-      // Filter out invalid entries
+      // Filter out invalid entries (must have both english and ibibio)
       const validEntries = entries.filter(entry => 
         entry.english && entry.ibibio && entry.meaning
       );
 
       if (validEntries.length === 0) {
-        throw new Error('No valid entries found in the file.');
+        throw new Error('No valid entries found in the file. Make sure your file has "english_definition" and "ibibio_word" fields (or similar variations).');
       }
 
       await dictionaryService.saveDictionary(validEntries);
-      setSuccess(`Successfully uploaded ${validEntries.length} dictionary entries!`);
+      setSuccess(`Successfully uploaded ${validEntries.length} dictionary entries! ${validEntries.length < entries.length ? `(${entries.length - validEntries.length} entries were skipped due to missing required fields)` : ''}`);
       
       // Clear the input
       event.target.value = '';
@@ -138,9 +138,12 @@ const DictionaryUpload = () => {
         )}
 
         <div className="text-xs text-gray-500 space-y-1">
-          <p><strong>Expected format:</strong></p>
-          <p>• JSON: Array of objects with fields: english, ibibio, meaning, partOfSpeech</p>
-          <p>• CSV: Headers: English, Ibibio, Meaning, Part of Speech</p>
+          <p><strong>Supported field names:</strong></p>
+          <p>• English: english, English, english_definition, english_word</p>
+          <p>• Ibibio: ibibio, Ibibio, ibibio_word, ibibio_translation</p>
+          <p>• Meaning: meaning, Meaning, english_definition, definition</p>
+          <p>• Part of Speech: partOfSpeech, part_of_speech, "Part of Speech", pos</p>
+          <p>• Other fields: pronunciation, cultural, category, examples</p>
         </div>
       </CardContent>
     </Card>

@@ -21,16 +21,28 @@ class DictionaryService {
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
-            this.dictionary = data;
+            // Transform the data to match our expected format
+            this.dictionary = data.map((item, index) => ({
+              id: item.id || `entry-${index}`,
+              english: item.english || item.english_definition || '',
+              ibibio: item.ibibio || item.ibibio_word || '',
+              meaning: item.meaning || item.english_definition || '',
+              partOfSpeech: item.partOfSpeech || item.part_of_speech || item['Part of Speech'] || 'unknown',
+              examples: item.examples || [],
+              pronunciation: item.pronunciation || item.Pronunciation || '',
+              cultural: item.cultural || item.Cultural || '',
+              category: item.category || item.Category || ''
+            })).filter(entry => entry.english && entry.ibibio); // Only keep entries with both fields
+
             this.isLoaded = true;
             // Save to localStorage for future use
-            localStorage.setItem('ibibio-dictionary', JSON.stringify(data));
-            console.log(`Default dictionary loaded with ${data.length} entries`);
+            localStorage.setItem('ibibio-dictionary', JSON.stringify(this.dictionary));
+            console.log(`Dictionary loaded from ibibio_dictionary.json with ${this.dictionary.length} entries`);
             return;
           }
         }
       } catch (fetchError) {
-        console.warn('Could not load default dictionary:', fetchError);
+        console.warn('Could not load ibibio_dictionary.json:', fetchError);
       }
 
       // Create a basic fallback dictionary
