@@ -13,10 +13,9 @@ import {
   containsAllWords,
   highlightWordsInSentence,
   getWordPositions,
-  runExamples,
-  runTests,
   type WordSearchOptions 
 } from '../utils/sentenceWordSearch';
+import { runExamples, runTests } from '../utils/sentenceWordSearch.test';
 
 const SentenceSearchDemo = () => {
   const [sentence, setSentence] = useState("Hello world! How are you today? I'm fine, thanks.");
