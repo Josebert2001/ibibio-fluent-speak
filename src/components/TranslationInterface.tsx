@@ -56,10 +56,20 @@ const TranslationInterface = () => {
   }, []);
 
   const handleSearch = async (query: string) => {
-    if (!query.trim()) return;
+    // Add comprehensive input validation at the start
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      console.warn('Invalid search query:', query);
+      return;
+    }
+    
+    const safeQuery = String(query).trim();
+    if (!safeQuery) {
+      console.warn('Empty search query after trimming');
+      return;
+    }
     
     setIsLoading(true);
-    setSearchQuery(query);
+    setSearchQuery(safeQuery);
     setCurrentTranslation(null);
     setSearchError(null);
     setAlternatives([]);
@@ -69,7 +79,7 @@ const TranslationInterface = () => {
     
     try {
       console.log('=== SEARCH DEBUG ===');
-      console.log('Searching for:', query);
+      console.log('Searching for:', safeQuery);
       console.log('Dictionary stats:', dictionaryService.getStats());
       
       // Force reload dictionary if not loaded
@@ -79,7 +89,7 @@ const TranslationInterface = () => {
       }
       
       // Try direct search in basic dictionary service first
-      let result = dictionaryService.search(query);
+      let result = dictionaryService.search(safeQuery);
       let source = 'basic_dictionary';
       let searchConfidence = 1.0;
       let alternativeResults: DictionaryEntry[] = [];
@@ -93,20 +103,20 @@ const TranslationInterface = () => {
         console.log('Not found in basic dictionary, trying enhanced...');
         
         // Try enhanced dictionary service
-        result = enhancedDictionaryService.search(query);
+        result = enhancedDictionaryService.search(safeQuery);
         
         if (result) {
           console.log('Found in enhanced dictionary:', result);
           source = 'enhanced_dictionary';
           
           // Get alternatives from fuzzy search
-          const fuzzyResults = enhancedDictionaryService.searchFuzzy(query, 5);
+          const fuzzyResults = enhancedDictionaryService.searchFuzzy(safeQuery, 5);
           alternativeResults = fuzzyResults.slice(1).map(r => r.entry);
         } else {
           console.log('Not found in enhanced dictionary either, trying fuzzy search...');
           
           // Try fuzzy search as last resort
-          const fuzzyResults = dictionaryService.searchFuzzy(query, 5);
+          const fuzzyResults = dictionaryService.searchFuzzy(safeQuery, 5);
           if (fuzzyResults.length > 0) {
             result = fuzzyResults[0].entry;
             searchConfidence = fuzzyResults[0].confidence;
@@ -122,7 +132,7 @@ const TranslationInterface = () => {
             console.log('Sample entries:', allEntries.slice(0, 5).map(e => ({ english: e.english, ibibio: e.ibibio })));
             
             // Check if God is specifically in there
-            const godEntries = allEntries.filter(e => e.english.toLowerCase().includes('god'));
+            const godEntries = allEntries.filter(e => e.english && typeof e.english === 'string' && e.english.toLowerCase().includes('god'));
             console.log('God-related entries:', godEntries);
           }
         }
@@ -139,20 +149,23 @@ const TranslationInterface = () => {
         setSources([source]);
         setResponseTime(searchTime);
         
-        // Add to recent searches
+        // Add to recent searches with safe string handling
         setRecentSearches(prev => {
           const newSearch = { 
-            english: query, 
-            ibibio: result!.ibibio, 
-            meaning: result!.meaning 
+            english: safeQuery, 
+            ibibio: result!.ibibio || '', 
+            meaning: result!.meaning || '' 
           };
-          return [newSearch, ...prev.filter(item => item.english.toLowerCase() !== query.toLowerCase())].slice(0, 5);
+          return [newSearch, ...prev.filter(item => 
+            item.english && typeof item.english === 'string' && 
+            item.english.toLowerCase() !== safeQuery.toLowerCase()
+          )].slice(0, 5);
         });
         
         console.log('Search completed successfully');
       } else {
         setCurrentTranslation(null);
-        setSearchError(`No translation found for "${query}". The word may not be in the dictionary yet.`);
+        setSearchError(`No translation found for "${safeQuery}". The word may not be in the dictionary yet.`);
         setResponseTime(searchTime);
         console.log('No translation found anywhere');
       }
