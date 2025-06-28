@@ -1,5 +1,4 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Mic, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,9 +12,40 @@ interface SearchBarProps {
 const SearchBar = ({ onSearch, isLoading, placeholder }: SearchBarProps) => {
   const [query, setQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounced search effect
+  useEffect(() => {
+    // Clear existing timeout
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+    }
+
+    // Only trigger debounced search if query is not empty and not currently loading
+    if (query.trim() && !isLoading) {
+      debounceTimeoutRef.current = setTimeout(() => {
+        onSearch(query.trim());
+      }, 500); // 500ms debounce delay
+    }
+
+    // Cleanup timeout on unmount or query change
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
+    };
+  }, [query, onSearch, isLoading]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear any pending debounced search
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current);
+      debounceTimeoutRef.current = null;
+    }
+    
+    // Trigger immediate search
     if (query.trim()) {
       onSearch(query.trim());
     }
@@ -23,11 +53,38 @@ const SearchBar = ({ onSearch, isLoading, placeholder }: SearchBarProps) => {
 
   const handleVoiceInput = () => {
     setIsListening(true);
-    // Simulate voice input
-    setTimeout(() => {
-      setIsListening(false);
-      setQuery('hello');
-    }, 2000);
+    
+    // Check if browser supports speech recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      const recognition = new SpeechRecognition();
+      
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = 'en-US';
+      
+      recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setQuery(transcript);
+        setIsListening(false);
+      };
+      
+      recognition.onerror = () => {
+        setIsListening(false);
+      };
+      
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+      
+      recognition.start();
+    } else {
+      // Fallback for browsers without speech recognition
+      setTimeout(() => {
+        setIsListening(false);
+        console.log('Speech recognition not supported in this browser');
+      }, 2000);
+    }
   };
 
   return (
@@ -56,6 +113,7 @@ const SearchBar = ({ onSearch, isLoading, placeholder }: SearchBarProps) => {
                   ? 'bg-red-100 text-red-600 animate-pulse' 
                   : 'hover:bg-gray-100 text-gray-600'
               }`}
+              title="Voice input"
             >
               {isListening ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -78,6 +136,15 @@ const SearchBar = ({ onSearch, isLoading, placeholder }: SearchBarProps) => {
           </div>
         </div>
       </form>
+      
+      {/* Debounce indicator */}
+      {query.trim() && !isLoading && (
+        <div className="text-center mt-2">
+          <span className="text-xs text-gray-500">
+            Search will trigger automatically after you stop typing...
+          </span>
+        </div>
+      )}
     </div>
   );
 };

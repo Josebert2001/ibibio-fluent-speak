@@ -25,10 +25,10 @@ class LangchainAgentService {
         throw new Error('Groq API key not available');
       }
 
-      // Use Groq API with OpenAI-compatible endpoint
+      // Use Groq API with OpenAI-compatible endpoint - optimized settings
       const llm = new ChatOpenAI({
         modelName: 'llama3-8b-8192',
-        temperature: 0.1,
+        temperature: 0.05, // Reduced for faster, more consistent responses
         openAIApiKey: apiKey,
         configuration: {
           baseURL: 'https://api.groq.com/openai/v1'
@@ -58,7 +58,7 @@ class LangchainAgentService {
         agent: agentRunnable,
         tools,
         verbose: false,
-        maxIterations: 5,
+        maxIterations: 3, // Reduced from 5 for faster responses
       });
 
       this.isInitialized = true;
@@ -94,29 +94,17 @@ class LangchainAgentService {
     }
 
     try {
-      const prompt = `You are an expert English to Ibibio translator. For the English word or phrase "${query}", please:
-
-1. Use the comprehensive_search tool to find the primary Ibibio translation
-2. Use the cultural_context tool to get cultural background information
-3. Use the pronunciation_guide tool to get the phonetic pronunciation
-4. Use the example_sentences tool to generate example sentences
-
-After gathering all information, provide your final answer as a valid JSON object with this exact structure:
+      // Optimized prompt for faster processing
+      const prompt = `Translate "${query}" from English to Ibibio. Provide a concise JSON response:
 {
-  "ibibio": "the primary Ibibio translation",
-  "meaning": "detailed meaning and definition in English",
+  "ibibio": "translation",
+  "meaning": "brief definition",
   "confidence": 0.95,
-  "examples": [
-    {
-      "english": "example sentence in English",
-      "ibibio": "example sentence in Ibibio"
-    }
-  ],
-  "cultural": "cultural context and background information",
-  "pronunciation": "phonetic pronunciation guide"
+  "examples": [{"english": "example", "ibibio": "translation"}],
+  "cultural": "brief context"
 }
 
-Make sure to return ONLY the JSON object as your final answer, no additional text.`;
+Focus on accuracy and speed. Return only the JSON object.`;
 
       const result = await this.agent.invoke({
         input: prompt

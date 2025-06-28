@@ -39,7 +39,7 @@ class ParallelSearchService {
 
       const llm = new ChatOpenAI({
         modelName: 'llama3-8b-8192',
-        temperature: 0.1,
+        temperature: 0.05, // Reduced for faster responses
         openAIApiKey: apiKey,
         configuration: {
           baseURL: 'https://api.groq.com/openai/v1'
@@ -68,7 +68,7 @@ class ParallelSearchService {
         agent: agentRunnable,
         tools,
         verbose: false,
-        maxIterations: 3,
+        maxIterations: 2, // Reduced from 3 for faster responses
       });
 
       this.isInitialized = true;
@@ -93,8 +93,8 @@ class ParallelSearchService {
     }
 
     // Initialize search engine if needed
-    if (!searchEngine) {
-      const entries = dictionaryService.getAllEntries();
+    const entries = dictionaryService.getAllEntries();
+    if (entries.length > 0) {
       searchEngine.buildIndex(entries);
     }
 
@@ -162,13 +162,8 @@ class ParallelSearchService {
       }
     }
 
-    const prompt = `Find comprehensive information for the English to Ibibio translation of "${query}". Use all available tools to gather:
-1. Primary translation using comprehensive_search
-2. Cultural context using cultural_context
-3. Pronunciation guide using pronunciation_guide
-4. Example sentences using example_sentences
-
-Return a JSON object with all gathered information.`;
+    // Optimized prompt for faster processing
+    const prompt = `Find Ibibio translation for "${query}". Return concise JSON with translation, cultural context, and pronunciation.`;
     
     const result = await this.agent!.invoke({
       input: prompt
