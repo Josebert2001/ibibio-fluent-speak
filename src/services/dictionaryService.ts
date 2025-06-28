@@ -23,7 +23,7 @@ class DictionaryService {
 
       // If no stored dictionary, try to load the default one
       try {
-        const response = await fetch('/src/lib/ibibio_dictionary.json');
+        const response = await fetch('/ibibio_dictionary.json');
         if (response.ok) {
           const rawData = await response.json();
           console.log('Raw dictionary data sample:', rawData.slice(0, 3));
