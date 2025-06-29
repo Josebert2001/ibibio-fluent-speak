@@ -11,35 +11,37 @@ class GroqService {
     }
 
     // No fallback to localStorage - environment variable only
-    console.warn('VITE_GROQ_API_KEY environment variable not set. Online search features will be disabled.');
+    console.warn('VITE_GROQ_API_KEY environment variable not set. Groq-dependent features will be disabled.');
     return null;
   }
 
-  async searchOnline(englishQuery: string): Promise<GroqResponse | null> {
+  async translateWithAI(englishQuery: string): Promise<GroqResponse | null> {
     const apiKey = this.getApiKey();
     if (!apiKey) {
       throw new Error('Groq API key not configured. Please set VITE_GROQ_API_KEY environment variable.');
     }
 
-    const prompt = `Search online for the English to Ibibio translation of "${englishQuery}".
-
-Look for this word in online dictionaries, language learning resources, and reliable linguistic sources.
+    const prompt = `Translate "${englishQuery}" from English to Ibibio.
 
 Provide a JSON response with this exact structure:
 {
   "ibibio": "the Ibibio translation",
   "meaning": "clear English definition",
-  "confidence": 0.85
+  "confidence": 0.85,
+  "examples": [
+    {"english": "example sentence", "ibibio": "ibibio translation"}
+  ],
+  "cultural": "cultural context if relevant"
 }
 
-If you cannot find a reliable translation online, return:
+If you cannot find a reliable translation, return:
 {
   "ibibio": "",
   "meaning": "",
   "confidence": 0
 }
 
-Focus on finding accurate translations from reputable sources.`;
+Focus on accuracy and cultural appropriateness.`;
 
     try {
       const response = await fetch(this.baseUrl, {
@@ -53,7 +55,7 @@ Focus on finding accurate translations from reputable sources.`;
           messages: [
             {
               role: 'system',
-              content: 'You are a helpful assistant that searches online for English to Ibibio translations. Return only valid JSON responses with accurate translations from reliable sources.'
+              content: 'You are a helpful assistant that provides accurate English to Ibibio translations. Return only valid JSON responses with accurate translations.'
             },
             {
               role: 'user',
@@ -61,7 +63,7 @@ Focus on finding accurate translations from reputable sources.`;
             }
           ],
           temperature: 0.1,
-          max_tokens: 300,
+          max_tokens: 400,
         }),
       });
 
@@ -92,13 +94,13 @@ Focus on finding accurate translations from reputable sources.`;
         ibibio: result.ibibio,
         meaning: result.meaning,
         confidence: result.confidence,
-        examples: [],
-        cultural: 'Translation found through online search'
+        examples: result.examples || [],
+        cultural: result.cultural
       };
 
     } catch (error) {
-      console.error('Online search error:', error);
-      throw new Error('Failed to search online for translation');
+      console.error('Groq AI translation error:', error);
+      throw new Error('Failed to get AI translation');
     }
   }
 }

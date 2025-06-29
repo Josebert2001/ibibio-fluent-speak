@@ -1,11 +1,11 @@
 # Ibi-Voice - English to Ibibio Translation Platform
 
-A professional English to Ibibio translation platform with local dictionary search and AI-powered online search capabilities.
+A professional English to Ibibio translation platform with local dictionary search and AI-powered online search capabilities using Hugging Face Spaces.
 
 ## Features
 
 - **Local Dictionary Search**: Fast, offline English to Ibibio translation using a comprehensive dictionary
-- **AI-Enhanced Online Search**: Powered by Groq's Llama3 model for words not found in the local dictionary
+- **AI-Enhanced Online Search**: Powered by Hugging Face Spaces for words not found in the local dictionary
 - **Smart Caching**: Intelligent caching system for faster repeated searches
 - **Multi-Source Search**: Combines local dictionary and online AI search
 - **Voice Input**: Speech recognition for hands-free searching
@@ -16,39 +16,48 @@ A professional English to Ibibio translation platform with local dictionary sear
 
 - **Frontend**: React, TypeScript, Tailwind CSS, shadcn/ui
 - **Build Tool**: Vite
-- **AI Integration**: Groq API with Llama3-8b-8192
+- **AI Integration**: Hugging Face Spaces API
 - **Search Engine**: Custom fuzzy search with indexing
 - **Caching**: Intelligent multi-layer caching system
 
 ## Environment Variables
 
-This application uses environment variables for secure API key management.
+This application uses environment variables for secure API configuration.
 
 ### Production Deployment
 
-For production deployments, set the following environment variable:
+For production deployments, set the following environment variables:
 
+- **Name**: `VITE_HUGGINGFACE_SPACE_URL`
+- **Value**: Your Hugging Face Space URL (e.g., `https://your-space-name.hf.space`)
+- **Environment**: Production, Preview, Development
+
+Optional for advanced features:
 - **Name**: `VITE_GROQ_API_KEY`
 - **Value**: Your Groq API key from [console.groq.com](https://console.groq.com)
-- **Environment**: Production, Preview, Development
 
 #### Vercel Deployment
 
 1. Go to your Vercel project dashboard
 2. Navigate to Settings → Environment Variables
-3. Add `VITE_GROQ_API_KEY` with your API key
-4. Set for Production, Preview, and Development environments
-5. Redeploy your application
+3. Add `VITE_HUGGINGFACE_SPACE_URL` with your Hugging Face Space URL
+4. Optionally add `VITE_GROQ_API_KEY` for advanced features
+5. Set for Production, Preview, and Development environments
+6. Redeploy your application
 
 #### Other Platforms
 
-Set the environment variable `VITE_GROQ_API_KEY` in your hosting platform's environment configuration.
+Set the environment variable `VITE_HUGGINGFACE_SPACE_URL` in your hosting platform's environment configuration.
 
 ### Local Development
 
 1. Copy `.env.example` to `.env.local`
-2. Get your Groq API key from [console.groq.com](https://console.groq.com)
-3. Add your API key to `.env.local`:
+2. Get your Hugging Face Space URL from [huggingface.co/spaces](https://huggingface.co/spaces)
+3. Add your Space URL to `.env.local`:
+   ```
+   VITE_HUGGINGFACE_SPACE_URL=https://your-space-name.hf.space
+   ```
+4. Optionally add Groq API key for advanced features:
    ```
    VITE_GROQ_API_KEY=your_groq_api_key_here
    ```
@@ -61,6 +70,7 @@ Set the environment variable `VITE_GROQ_API_KEY` in your hosting platform's envi
 
 - Node.js (recommended: use [nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
 - npm or yarn
+- A Hugging Face Space with English to Ibibio translation model
 
 ### Installation
 
@@ -74,9 +84,9 @@ cd <YOUR_PROJECT_NAME>
 # Install dependencies
 npm install
 
-# Set up environment variables (optional, for online search features)
+# Set up environment variables
 cp .env.example .env.local
-# Edit .env.local and add your Groq API key
+# Edit .env.local and add your Hugging Face Space URL
 
 # Start the development server
 npm run dev
@@ -95,13 +105,14 @@ npm run dev
 
 1. Enter an English word or phrase in the search box
 2. The system will first search the local dictionary for instant results
-3. If not found locally, AI-enhanced online search will provide translations
+3. If not found locally, AI-enhanced online search will provide translations via Hugging Face
 4. View detailed results including pronunciation, cultural context, and examples
 
 ### Features Available
 
-- **Without API Key**: Local dictionary search with 1000+ entries
-- **With API Key**: Enhanced online search, cultural context, pronunciation guides, and alternative translations
+- **Without Hugging Face Space**: Local dictionary search with 1000+ entries
+- **With Hugging Face Space**: Enhanced online search, AI-powered translations, and sentence processing
+- **With Groq API Key**: Advanced cultural context, pronunciation guides, and alternative translations
 
 ## Architecture
 
@@ -110,19 +121,46 @@ npm run dev
 - **Dictionary Service**: Manages local dictionary data and basic search
 - **Enhanced Dictionary Service**: Provides advanced search with indexing
 - **Parallel Search Service**: Orchestrates multi-source search (local + online)
-- **Groq Service**: Handles AI-powered online translations
+- **Hugging Face Service**: Handles AI-powered online translations via Hugging Face Spaces
 - **Cache Manager**: Intelligent caching for performance optimization
 
 ### Search Flow
 
 1. **Cache Check**: First checks for cached results
 2. **Local Search**: Searches local dictionary with fuzzy matching
-3. **Online Search**: If no local results, uses AI for online translation
+3. **Online Search**: If no local results, uses Hugging Face AI for online translation
 4. **Result Caching**: Caches successful results for future use
+
+## Hugging Face Integration
+
+The application integrates with Hugging Face Spaces to provide AI-powered translations:
+
+### API Integration
+```javascript
+async function translateOnline(query) {
+    const response = await fetch('https://your-space-url.hf.space/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            data: [query],
+            fn_index: 0
+        })
+    });
+    const result = await response.json();
+    return result.data[0];
+}
+```
+
+### Features
+- **Automatic Retry**: Built-in retry mechanism for reliability
+- **Timeout Handling**: Configurable timeout for API requests
+- **Error Handling**: Comprehensive error handling and fallbacks
+- **Batch Processing**: Efficient batch translation for multiple words
+- **Type Safety**: Full TypeScript support with proper interfaces
 
 ## Security
 
-- API keys are managed through environment variables
+- API configurations are managed through environment variables
 - No sensitive data is stored in the repository
 - Client-side caching uses localStorage for non-sensitive data only
 - Production deployments use secure environment variable management
@@ -130,7 +168,7 @@ npm run dev
 ## Performance
 
 - Local dictionary search: ~1-5ms response time
-- Online AI search: ~500-2000ms response time
+- Hugging Face AI search: ~500-2000ms response time
 - Intelligent caching reduces repeated search times to ~1ms
 - Fuzzy search with confidence scoring for accurate results
 

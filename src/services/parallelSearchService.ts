@@ -1,4 +1,4 @@
-import { groqService } from './groqService';
+import { huggingFaceService } from './huggingFaceService';
 import { dictionaryService } from './dictionaryService';
 import { cacheManager } from './cacheManager';
 import { searchEngine } from './searchEngine';
@@ -132,7 +132,7 @@ class ParallelSearchService {
     // Then prioritize online sentence translation if available
     else if (sentenceResult.onlineResult) {
       primaryResult = sentenceResult.onlineResult;
-      primarySource = 'online_sentence';
+      primarySource = 'huggingface_sentence';
       primaryConfidence = sentenceResult.onlineConfidence;
     }
     // Finally use local word-by-word translation
@@ -151,14 +151,14 @@ class ParallelSearchService {
     }
     
     // Add online result as alternative if it's not the primary
-    if (sentenceResult.onlineResult && primarySource !== 'online_sentence') {
+    if (sentenceResult.onlineResult && primarySource !== 'huggingface_sentence') {
       alternatives.push(sentenceResult.onlineResult);
     }
     
     // Step 5: Determine sources
     const sources: string[] = [];
     if (sentenceResult.hasLocalTranslation) sources.push('local_dictionary');
-    if (sentenceResult.hasOnlineTranslation) sources.push('online_search');
+    if (sentenceResult.hasOnlineTranslation) sources.push('huggingface_online');
     
     const result: ParallelSearchResult = {
       result: primaryResult,
@@ -206,22 +206,8 @@ class ParallelSearchService {
       return result;
     }
 
-    // Step 2: Not found locally - try online search with AI
-    const apiKey = groqService.getApiKey();
-    if (!apiKey) {
-      // No API key available
-      return {
-        result: null,
-        confidence: 0,
-        source: 'none',
-        alternatives: [],
-        sources: [],
-        responseTime: Date.now() - startTime,
-        isMultiWord: false
-      };
-    }
-
-    console.log(`"${normalizedQuery}" not found in local dictionary. Searching online...`);
+    // Step 2: Not found locally - try online search with Hugging Face
+    console.log(`"${normalizedQuery}" not found in local dictionary. Searching with Hugging Face...`);
     
     // Step 3: Try Langchain agent first (if available)
     if (langchainAgentService.isAvailable()) {
@@ -243,31 +229,31 @@ class ParallelSearchService {
           return result;
         }
       } catch (agentError) {
-        console.warn('Langchain agent search failed, trying fallback:', agentError);
+        console.warn('Langchain agent search failed, trying Hugging Face fallback:', agentError);
       }
     }
     
-    // Step 4: Fallback to direct online search
+    // Step 4: Fallback to Hugging Face online search
     try {
-      const onlineResult = await this.searchOnline(normalizedQuery);
+      const huggingFaceResult = await huggingFaceService.getDictionaryEntry(normalizedQuery);
       
-      if (onlineResult) {
+      if (huggingFaceResult) {
         const result: ParallelSearchResult = {
-          result: onlineResult,
-          confidence: 75, // Online results get 75% confidence
-          source: 'online_search',
+          result: huggingFaceResult,
+          confidence: 85, // Hugging Face results get 85% confidence
+          source: 'huggingface_online',
           alternatives: [],
-          sources: ['online_search'],
+          sources: ['huggingface_online'],
           responseTime: Date.now() - startTime,
           isMultiWord: false
         };
 
-        // Cache the online result
+        // Cache the Hugging Face result
         cacheManager.set(normalizedQuery, result, result.source);
         return result;
       }
-    } catch (onlineError) {
-      console.error('Online search failed:', onlineError);
+    } catch (huggingFaceError) {
+      console.error('Hugging Face search failed:', huggingFaceError);
     }
 
     // No results found anywhere
@@ -296,98 +282,11 @@ class ParallelSearchService {
     };
   }
 
-  private async searchOnline(query: string): Promise<DictionaryEntry | null> {
-    try {
-      // Use AI to search online for the specific word with validation
-      const prompt = `Search online for the English to Ibibio translation of "${query}". 
-      
-      IMPORTANT: Verify the accuracy of your translation by cross-referencing multiple reliable sources.
-      Only provide translations you are confident are correct.
-      
-      Return ONLY a JSON response with this exact format:
-      {
-        "ibibio": "the verified Ibibio translation",
-        "meaning": "the English meaning/definition",
-        "confidence": 0.8,
-        "verified": true
-      }
-      
-      If you cannot find a reliable and verified translation, return:
-      {
-        "ibibio": "",
-        "meaning": "",
-        "confidence": 0,
-        "verified": false
-      }`;
-
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqService.getApiKey()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'llama3-8b-8192',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a careful and accurate translator that only provides verified English to Ibibio translations. Always verify your translations against multiple sources before responding.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 500,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-      
-      if (!content) {
-        return null;
-      }
-
-      // Extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return null;
-      }
-
-      const result = JSON.parse(jsonMatch[0]);
-      
-      if (!result.ibibio || !result.meaning || result.confidence === 0 || !result.verified) {
-        return null;
-      }
-
-      // Create dictionary entry from verified online result
-      return {
-        id: `online-verified-${Date.now()}`,
-        english: query,
-        ibibio: result.ibibio,
-        meaning: result.meaning,
-        partOfSpeech: 'unknown',
-        examples: [],
-        cultural: 'Translation verified through online search with multiple source validation'
-      };
-
-    } catch (error) {
-      console.error('Online search error:', error);
-      return null;
-    }
-  }
-
   getStats() {
     return {
       cacheStats: cacheManager.getStats(),
       isInitialized: this.isInitialized,
-      hasApiKey: !!groqService.getApiKey(),
+      huggingFaceStats: huggingFaceService.getStats(),
       searchEngineReady: !!searchEngine,
       langchainAgentAvailable: langchainAgentService.isAvailable()
     };

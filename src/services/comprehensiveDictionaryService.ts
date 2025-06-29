@@ -1,6 +1,6 @@
 import { dictionaryService } from './dictionaryService';
 import { searchEngine } from './searchEngine';
-import { groqService } from './groqService';
+import { huggingFaceService } from './huggingFaceService';
 import { cacheManager } from './cacheManager';
 import { DictionaryEntry } from '../types/dictionary';
 
@@ -53,7 +53,7 @@ interface ComprehensiveSearchResult {
   combinedTranslation: {
     ibibio: string;
     confidence: number;
-    source: 'dictionary' | 'online' | 'hybrid';
+    source: 'dictionary' | 'huggingface' | 'hybrid';
   } | null;
   requestedOnlineSearch: boolean;
 }
@@ -113,10 +113,10 @@ class ComprehensiveDictionaryService {
     // Step 4: Perform online search if requested or if dictionary coverage is low
     let onlineResults: OnlineSearchResult | null = null;
     const shouldSearchOnline = requestOnlineSearch || 
-      (dictionaryResults.coverage < 70 && groqService.getApiKey());
+      (dictionaryResults.coverage < 70 && huggingFaceService.getStats().isConfigured);
 
     if (shouldSearchOnline) {
-      console.log('Performing online search...');
+      console.log('Performing online search with Hugging Face...');
       onlineResults = await this.performOnlineSearch(normalizedInput, wordAnalyses);
     }
 
@@ -230,110 +230,45 @@ class ComprehensiveDictionaryService {
     inputText: string, 
     wordAnalyses: WordAnalysis[]
   ): Promise<OnlineSearchResult | null> {
-    const apiKey = groqService.getApiKey();
-    if (!apiKey) {
-      console.warn('No API key available for online search');
+    if (!huggingFaceService.getStats().isConfigured) {
+      console.warn('Hugging Face service not configured');
       return null;
     }
 
     try {
-      // Find words that weren't found in dictionary
-      const missingWords = wordAnalyses
-        .filter(w => !w.found)
-        .map(w => w.word);
-
-      const prompt = `Perform a comprehensive search for English to Ibibio translation:
-
-Input: "${inputText}"
-Missing from dictionary: ${missingWords.join(', ')}
-
-Provide a detailed JSON response with:
-
-{
-  "definitions": [
-    {
-      "source": "source_name",
-      "definition": "English definition",
-      "ibibio": "Ibibio translation",
-      "confidence": 0.9
-    }
-  ],
-  "relatedPhrases": [
-    {
-      "phrase": "related English phrase",
-      "translation": "Ibibio translation",
-      "context": "usage context"
-    }
-  ],
-  "webExamples": [
-    {
-      "english": "example sentence",
-      "ibibio": "Ibibio translation",
-      "source": "source"
-    }
-  ],
-  "additionalResources": [
-    {
-      "title": "Resource title",
-      "url": "https://example.com",
-      "description": "Resource description"
-    }
-  ]
-}
-
-Focus on accuracy and provide multiple sources when possible.`;
-
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'llama3-8b-8192',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a comprehensive language research assistant specializing in English to Ibibio translation. Provide detailed, accurate information from multiple sources.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: 1000,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
+      // Get translation from Hugging Face
+      const translation = await huggingFaceService.translateOnline(inputText);
       
-      if (!content) {
+      if (!translation) {
         return null;
       }
 
-      // Extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return null;
-      }
-
-      const result = JSON.parse(jsonMatch[0]);
-      
-      return {
-        definitions: result.definitions || [],
-        relatedPhrases: result.relatedPhrases || [],
-        webExamples: result.webExamples || [],
-        additionalResources: result.additionalResources || []
+      // Create a simplified online search result structure
+      // Since Hugging Face provides direct translation, we'll create a basic structure
+      const onlineResult: OnlineSearchResult = {
+        definitions: [
+          {
+            source: 'Hugging Face AI Model',
+            definition: `AI translation of "${inputText}"`,
+            ibibio: translation,
+            confidence: 0.85
+          }
+        ],
+        relatedPhrases: [], // Hugging Face doesn't provide related phrases
+        webExamples: [
+          {
+            english: inputText,
+            ibibio: translation,
+            source: 'Hugging Face AI'
+          }
+        ],
+        additionalResources: [] // No additional resources from Hugging Face
       };
 
+      return onlineResult;
+
     } catch (error) {
-      console.error('Online search error:', error);
+      console.error('Hugging Face online search error:', error);
       return null;
     }
   }
@@ -364,7 +299,7 @@ Focus on accuracy and provide multiple sources when possible.`;
       return {
         ibibio: bestDefinition.ibibio,
         confidence: Math.round(bestDefinition.confidence * 100),
-        source: 'online' as const
+        source: 'huggingface' as const
       };
     }
 
@@ -398,7 +333,7 @@ Focus on accuracy and provide multiple sources when possible.`;
       isInitialized: this.isInitialized,
       dictionaryStats: dictionaryService.getStats(),
       cacheStats: cacheManager.getStats(),
-      hasApiKey: !!groqService.getApiKey()
+      huggingFaceStats: huggingFaceService.getStats()
     };
   }
 }

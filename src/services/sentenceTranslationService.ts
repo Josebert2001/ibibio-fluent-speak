@@ -1,6 +1,6 @@
 import { dictionaryService } from './dictionaryService';
 import { searchEngine } from './searchEngine';
-import { groqService } from './groqService';
+import { huggingFaceService } from './huggingFaceService';
 import { DictionaryEntry } from '../types/dictionary';
 
 interface WordTranslation {
@@ -8,7 +8,7 @@ interface WordTranslation {
   ibibio: string;
   found: boolean;
   confidence: number;
-  source: 'dictionary' | 'online' | 'unknown';
+  source: 'dictionary' | 'huggingface' | 'unknown';
 }
 
 interface SentenceTranslationResult {
@@ -35,12 +35,11 @@ class SentenceTranslationService {
     // Step 3: Build local sentence translation
     const localResult = this.buildLocalSentenceTranslation(sentence, localWordTranslations);
     
-    // Step 4: Get online translation if API key is available
+    // Step 4: Get online translation if Hugging Face is configured
     let onlineResult: DictionaryEntry | null = null;
     let onlineWordTranslations: WordTranslation[] = [];
     
-    const apiKey = groqService.getApiKey();
-    if (apiKey) {
+    if (huggingFaceService.getStats().isConfigured) {
       try {
         onlineResult = await this.getOnlineSentenceTranslation(sentence);
         
@@ -139,98 +138,21 @@ class SentenceTranslationService {
   }
   
   private async translateWordsOnline(words: string[]): Promise<WordTranslation[]> {
-    const translations: WordTranslation[] = [];
-    
     try {
-      // Translate words in batches to avoid too many API calls
-      const batchSize = 5;
-      for (let i = 0; i < words.length; i += batchSize) {
-        const batch = words.slice(i, i + batchSize);
-        const batchTranslations = await this.translateWordBatchOnline(batch);
-        translations.push(...batchTranslations);
-      }
+      // Use Hugging Face service for batch translation
+      const batchResults = await huggingFaceService.translateWordBatch(words);
+      
+      return batchResults.map(result => ({
+        english: result.english,
+        ibibio: result.ibibio,
+        found: result.found,
+        confidence: result.confidence,
+        source: 'huggingface' as const
+      }));
+      
     } catch (error) {
       console.error('Online word translation failed:', error);
       // Return empty translations if online fails
-      return words.map(word => ({
-        english: word,
-        ibibio: `[${word}]`,
-        found: false,
-        confidence: 0,
-        source: 'unknown'
-      }));
-    }
-    
-    return translations;
-  }
-  
-  private async translateWordBatchOnline(words: string[]): Promise<WordTranslation[]> {
-    const prompt = `Translate these English words to Ibibio individually. Return ONLY a JSON array:
-
-Words: ${words.join(', ')}
-
-Format:
-[
-  {"english": "word1", "ibibio": "translation1", "confidence": 0.9},
-  {"english": "word2", "ibibio": "translation2", "confidence": 0.8}
-]
-
-If you cannot translate a word reliably, use confidence: 0 and ibibio: ""`;
-
-    try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqService.getApiKey()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'llama3-8b-8192',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a precise English to Ibibio translator. Return only valid JSON arrays.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.1,
-          max_tokens: 300,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-      
-      if (!content) {
-        throw new Error('No content in response');
-      }
-
-      // Extract JSON array from response
-      const jsonMatch = content.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        throw new Error('No JSON array found in response');
-      }
-
-      const results = JSON.parse(jsonMatch[0]);
-      
-      return results.map((result: any) => ({
-        english: result.english,
-        ibibio: result.ibibio || `[${result.english}]`,
-        found: !!result.ibibio && result.confidence > 0,
-        confidence: (result.confidence || 0) * 100,
-        source: 'online' as const
-      }));
-
-    } catch (error) {
-      console.error('Batch translation error:', error);
-      // Return fallback translations
       return words.map(word => ({
         english: word,
         ibibio: `[${word}]`,
@@ -242,80 +164,25 @@ If you cannot translate a word reliably, use confidence: 0 and ibibio: ""`;
   }
   
   private async getOnlineSentenceTranslation(sentence: string): Promise<DictionaryEntry | null> {
-    const prompt = `Translate this complete English sentence to Ibibio:
-
-"${sentence}"
-
-Provide a natural, fluent Ibibio translation that maintains the meaning and context.
-
-Return ONLY a JSON response:
-{
-  "ibibio": "complete Ibibio sentence translation",
-  "meaning": "explanation of the sentence meaning",
-  "confidence": 0.9
-}
-
-If you cannot provide a reliable translation, return confidence: 0`;
-
     try {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${groqService.getApiKey()}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'llama3-8b-8192',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert English to Ibibio translator who provides natural, fluent sentence translations.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          temperature: 0.2,
-          max_tokens: 400,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
+      const translation = await huggingFaceService.translateOnline(sentence);
       
-      if (!content) {
-        return null;
-      }
-
-      // Extract JSON from response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        return null;
-      }
-
-      const result = JSON.parse(jsonMatch[0]);
-      
-      if (!result.ibibio || result.confidence === 0) {
+      if (!translation) {
         return null;
       }
 
       return {
-        id: `online-sentence-${Date.now()}`,
+        id: `hf-sentence-${Date.now()}`,
         english: sentence,
-        ibibio: result.ibibio,
-        meaning: result.meaning || `Online translation of: ${sentence}`,
+        ibibio: translation,
+        meaning: `Hugging Face AI translation of: ${sentence}`,
         partOfSpeech: 'sentence',
         examples: [],
-        cultural: 'Complete sentence translation from online AI service'
+        cultural: 'Complete sentence translation from Hugging Face AI service'
       };
 
     } catch (error) {
-      console.error('Online sentence translation error:', error);
+      console.error('Hugging Face sentence translation error:', error);
       return null;
     }
   }
@@ -363,7 +230,7 @@ If you cannot provide a reliable translation, return confidence: 0`;
         // Use online translation if local not found
         combined.push({
           ...online,
-          source: 'online'
+          source: 'huggingface'
         });
       } else {
         // Keep the local result (even if not found)
