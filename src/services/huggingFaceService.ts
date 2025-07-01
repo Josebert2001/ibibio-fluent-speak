@@ -206,21 +206,8 @@ class HuggingFaceService {
       }
 
       // Extract the primary translation from the response
-      let primaryTranslation = '';
-      let translationSource = 'enhanced-backend';
+      const primaryTranslation = this.extractPrimaryTranslation(response);
       
-      // Prioritize local dictionary, then AI response, then web search
-      if (response.local_dictionary) {
-        primaryTranslation = this.extractTranslationFromText(response.local_dictionary);
-        translationSource = 'local-dictionary';
-      } else if (response.ai_response) {
-        primaryTranslation = this.extractTranslationFromText(response.ai_response);
-        translationSource = 'ai-enhanced';
-      } else if (response.web_search) {
-        primaryTranslation = this.extractTranslationFromText(response.web_search);
-        translationSource = 'web-research';
-      }
-
       if (!primaryTranslation) {
         return null;
       }
@@ -229,7 +216,7 @@ class HuggingFaceService {
         id: `enhanced-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         english: query.trim(),
         ibibio: primaryTranslation,
-        meaning: `Multi-source translation from ${translationSource}`,
+        meaning: `Multi-source translation from enhanced backend`,
         partOfSpeech: this.inferPartOfSpeech(query),
         examples: [],
         cultural: this.formatTranslationResult(response),
@@ -245,9 +232,24 @@ class HuggingFaceService {
   }
 
   /**
+   * Extract the primary translation from BackendTranslationResponse
+   */
+  extractPrimaryTranslation(response: BackendTranslationResponse): string {
+    // Prioritize local dictionary, then AI response, then web search
+    if (response.local_dictionary) {
+      return this.extractTranslationFromText(response.local_dictionary);
+    } else if (response.ai_response) {
+      return this.extractTranslationFromText(response.ai_response);
+    } else if (response.web_search) {
+      return this.extractTranslationFromText(response.web_search);
+    }
+    return '';
+  }
+
+  /**
    * Extract Ibibio translation from formatted text response
    */
-  private extractTranslationFromText(text: string): string {
+  extractTranslationFromText(text: string): string {
     // Look for common patterns in the response text
     const patterns = [
       /Translation:\s*([^.\n]+)/i,
