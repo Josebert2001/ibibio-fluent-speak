@@ -1,4 +1,3 @@
-
 import { DictionaryEntry } from '../types/dictionary';
 
 /**
@@ -50,7 +49,7 @@ class HuggingFaceService {
 
   constructor() {
     this.config = {
-      spaceUrl: import.meta.env.VITE_HUGGINGFACE_SPACE_URL || 'https://your-space-url.hf.space',
+      spaceUrl: import.meta.env.VITE_HUGGINGFACE_SPACE_URL || '',
       timeout: 15000, // Increased timeout for backend processing
       retryAttempts: 2
     };
@@ -78,7 +77,7 @@ class HuggingFaceService {
       throw new Error('Invalid input: Query must be a non-empty string');
     }
 
-    if (!this.config.spaceUrl || this.config.spaceUrl === 'https://your-space-url.hf.space') {
+    if (!this.config.spaceUrl || this.config.spaceUrl === '' || this.config.spaceUrl === 'https://your-space-url.hf.space') {
       throw new Error('Hugging Face Space URL not configured. Please set VITE_HUGGINGFACE_SPACE_URL environment variable.');
     }
 
@@ -250,6 +249,8 @@ class HuggingFaceService {
    * Extract Ibibio translation from formatted text response
    */
   extractTranslationFromText(text: string): string {
+    if (!text || typeof text !== 'string') return '';
+    
     // Look for common patterns in the response text
     const patterns = [
       /Translation:\s*([^.\n]+)/i,
@@ -277,6 +278,8 @@ class HuggingFaceService {
    * @returns string - Inferred part of speech
    */
   private inferPartOfSpeech(text: string): string {
+    if (!text || typeof text !== 'string') return 'unknown';
+    
     const trimmed = text.trim().toLowerCase();
     
     if (trimmed.includes(' ')) {
@@ -380,7 +383,7 @@ class HuggingFaceService {
       spaceUrl: this.config.spaceUrl,
       timeout: this.config.timeout,
       retryAttempts: this.config.retryAttempts,
-      isConfigured: this.config.spaceUrl !== 'https://your-space-url.hf.space',
+      isConfigured: !!(this.config.spaceUrl && this.config.spaceUrl !== '' && this.config.spaceUrl !== 'https://your-space-url.hf.space'),
       features: ['AI Translation', 'Local Dictionary', 'Web Search', 'Multi-source Validation']
     };
   }

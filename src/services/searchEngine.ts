@@ -12,8 +12,14 @@ class SearchEngine {
     prefix: new Map(),
     words: new Map()
   };
+  private isIndexBuilt = false;
 
   buildIndex(entries: DictionaryEntry[]): void {
+    if (!Array.isArray(entries) || entries.length === 0) {
+      console.warn('Cannot build index: entries is empty or not an array');
+      return;
+    }
+
     console.log('Building search index...');
     
     // Clear existing index
@@ -23,12 +29,14 @@ class SearchEngine {
 
     entries.forEach(entry => {
       // Validate that entry.english exists and is a string
-      if (!entry.english || typeof entry.english !== 'string') {
+      if (!entry || !entry.english || typeof entry.english !== 'string') {
         return;
       }
 
       const english = String(entry.english).toLowerCase().trim();
       
+      if (!english) return;
+
       // Exact match index
       if (!this.index.exact.has(english)) {
         this.index.exact.set(english, []);
@@ -56,15 +64,23 @@ class SearchEngine {
       });
     });
 
+    this.isIndexBuilt = true;
     console.log(`Index built: ${this.index.exact.size} exact entries, ${this.index.prefix.size} prefixes, ${this.index.words.size} words`);
   }
 
   searchExact(query: string): DictionaryEntry[] {
-    return this.index.exact.get(query.toLowerCase().trim()) || [];
+    if (!this.isIndexBuilt || !query) return [];
+    
+    const normalizedQuery = String(query).toLowerCase().trim();
+    return this.index.exact.get(normalizedQuery) || [];
   }
 
   searchFuzzy(query: string, limit = 10): SearchResult[] {
-    const normalizedQuery = query.toLowerCase().trim();
+    if (!this.isIndexBuilt || !query) return [];
+    
+    const normalizedQuery = String(query).toLowerCase().trim();
+    if (!normalizedQuery) return [];
+    
     const results: Map<string, SearchResult> = new Map();
 
     // Exact matches (highest priority)
@@ -145,6 +161,15 @@ class SearchEngine {
     });
 
     return matchCount / Math.max(queryWords.size, targetWords.size);
+  }
+
+  getStats() {
+    return {
+      isIndexBuilt: this.isIndexBuilt,
+      exactEntries: this.index.exact.size,
+      prefixEntries: this.index.prefix.size,
+      wordEntries: this.index.words.size
+    };
   }
 }
 

@@ -13,6 +13,7 @@ import { dictionaryService } from '../services/dictionaryService';
 import { parallelSearchService } from '../services/parallelSearchService';
 import { comprehensiveDictionaryService } from '../services/comprehensiveDictionaryService';
 import { groqService } from '../services/groqService';
+import { huggingFaceService } from '../services/huggingFaceService';
 import { DictionaryEntry } from '../types/dictionary';
 
 const TranslationInterface = () => {
@@ -228,8 +229,8 @@ const TranslationInterface = () => {
       case 'local_dictionary': return 'Local Dictionary';
       case 'local_dictionary_exact': return 'Local Dictionary (Exact)';
       case 'local_sentence': return 'Local Dictionary (Sentence)';
-      case 'online_search': return 'Online Search';
-      case 'online_sentence': return 'Online Search (Sentence)';
+      case 'huggingface_online': return 'Hugging Face Online';
+      case 'huggingface_sentence': return 'Hugging Face (Sentence)';
       case 'local_fallback': return 'Local Dictionary (Fallback)';
       case 'cache': return 'Cached Result';
       case 'dictionary': return 'Dictionary';
@@ -241,6 +242,7 @@ const TranslationInterface = () => {
 
   const stats = dictionaryService.getStats();
   const hasApiKey = !!groqService.getApiKey();
+  const hasHuggingFace = huggingFaceService.getStats().isConfigured;
 
   return (
     <div className="w-full max-w-4xl mx-auto px-3 sm:px-4 space-y-4 sm:space-y-6 lg:space-y-8">
@@ -280,8 +282,8 @@ const TranslationInterface = () => {
           <BookOpen className="w-3 h-3 sm:w-4 sm:h-4 text-blue-600" />
           <span className="font-medium text-blue-700">
             {searchMode === 'comprehensive' 
-              ? (hasApiKey ? 'Comprehensive Analysis + Online' : 'Comprehensive Analysis') 
-              : (hasApiKey ? 'Dictionary + Online + Sentences' : 'Dictionary Only')
+              ? (hasHuggingFace ? 'Comprehensive Analysis + Online' : 'Comprehensive Analysis') 
+              : (hasHuggingFace ? 'Dictionary + Online + Sentences' : 'Dictionary Only')
             }
           </span>
         </div>
@@ -292,7 +294,7 @@ const TranslationInterface = () => {
         <div className="text-center p-3 sm:p-4 bg-green-50 rounded-lg mx-2 sm:mx-0">
           <p className="text-xs sm:text-sm text-green-700">
             <span className="font-semibold">{stats.totalEntries} entries loaded</span>
-            {hasApiKey && <span className="block sm:inline sm:ml-2">• Online search & sentence processing available</span>}
+            {hasHuggingFace && <span className="block sm:inline sm:ml-2">• Online search & sentence processing available</span>}
           </p>
         </div>
       )}
@@ -310,7 +312,7 @@ const TranslationInterface = () => {
       </div>
 
       {/* Online Search Button for Comprehensive Mode */}
-      {searchMode === 'comprehensive' && hasApiKey && searchQuery && !isLoading && (
+      {searchMode === 'comprehensive' && hasHuggingFace && searchQuery && !isLoading && (
         <div className="text-center px-2 sm:px-0">
           <Button
             onClick={handleOnlineSearch}

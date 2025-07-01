@@ -24,15 +24,22 @@ class CacheManager {
       
       if (cacheData) {
         const parsed = JSON.parse(cacheData);
-        this.cache = new Map(Object.entries(parsed));
+        if (parsed && typeof parsed === 'object') {
+          this.cache = new Map(Object.entries(parsed));
+        }
       }
       
       if (frequencyData) {
         const parsed = JSON.parse(frequencyData);
-        this.searchFrequency = new Map(Object.entries(parsed).map(([k, v]) => [k, Number(v)]));
+        if (parsed && typeof parsed === 'object') {
+          this.searchFrequency = new Map(Object.entries(parsed).map(([k, v]) => [k, Number(v)]));
+        }
       }
     } catch (error) {
       console.error('Error loading cache:', error);
+      // Reset cache on error
+      this.cache.clear();
+      this.searchFrequency.clear();
     }
   }
 
@@ -49,6 +56,8 @@ class CacheManager {
   }
 
   get<T>(key: string): T | null {
+    if (!key || typeof key !== 'string') return null;
+    
     const entry = this.cache.get(key);
     
     if (!entry) return null;
@@ -67,6 +76,8 @@ class CacheManager {
   }
 
   set<T>(key: string, data: T, source: string, customTtl?: number): void {
+    if (!key || typeof key !== 'string' || !data) return;
+    
     const frequency = this.searchFrequency.get(key) || 0;
     const ttl = customTtl || (frequency > 5 ? this.FREQUENT_SEARCH_TTL : this.DEFAULT_TTL);
     
@@ -85,6 +96,8 @@ class CacheManager {
   }
 
   delete(key: string): void {
+    if (!key || typeof key !== 'string') return;
+    
     this.cache.delete(key);
     this.searchFrequency.delete(key);
     this.saveToStorage();

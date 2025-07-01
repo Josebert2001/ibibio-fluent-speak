@@ -14,10 +14,6 @@ class DictionaryService {
         this.dictionary = this.transformDictionaryData(data);
         this.isLoaded = true;
         console.log(`Dictionary loaded from storage with ${this.dictionary.length} entries`);
-        
-        // Debug: Check if God is in the loaded dictionary
-        const godEntry = this.dictionary.find(e => e.english && e.english.toLowerCase() === 'god');
-        console.log('God entry in loaded dictionary:', godEntry);
         return;
       }
 
@@ -36,10 +32,6 @@ class DictionaryService {
             // Save transformed data to localStorage for future use
             localStorage.setItem('ibibio-dictionary', JSON.stringify(this.dictionary));
             console.log(`Dictionary loaded from ibibio_dictionary.json with ${this.dictionary.length} entries`);
-            
-            // Debug: Check if God is in the loaded dictionary
-            const godEntry = this.dictionary.find(e => e.english && e.english.toLowerCase() === 'god');
-            console.log('God entry after transformation:', godEntry);
             return;
           }
         }
@@ -56,6 +48,11 @@ class DictionaryService {
   }
 
   private transformDictionaryData(rawData: any[]): DictionaryEntry[] {
+    if (!Array.isArray(rawData)) {
+      console.warn('Dictionary data is not an array, using fallback');
+      return [];
+    }
+
     return rawData.map((item, index) => {
       // Handle multiple possible field name variations
       const english = item.english || item.English || item.english_definition || item.english_word || item.word || '';
@@ -230,9 +227,9 @@ class DictionaryService {
   }
 
   search(query: string): DictionaryEntry | null {
-    if (!this.isLoaded) return null;
+    if (!this.isLoaded || !query) return null;
     
-    const normalizedQuery = (query || '').toLowerCase().trim();
+    const normalizedQuery = String(query).toLowerCase().trim();
     if (!normalizedQuery) return null;
     
     console.log(`Searching for: "${normalizedQuery}" in ${this.dictionary.length} entries`);
@@ -261,14 +258,17 @@ class DictionaryService {
       return isMatch;
     });
     
-    console.log(`No match found for: "${normalizedQuery}"`);
+    if (!partialMatch) {
+      console.log(`No match found for: "${normalizedQuery}"`);
+    }
+    
     return partialMatch || null;
   }
 
   searchExact(query: string): DictionaryEntry | null {
-    if (!this.isLoaded) return null;
+    if (!this.isLoaded || !query) return null;
     
-    const normalizedQuery = (query || '').toLowerCase().trim();
+    const normalizedQuery = String(query).toLowerCase().trim();
     if (!normalizedQuery) return null;
     
     return this.dictionary.find(entry => 
@@ -277,9 +277,9 @@ class DictionaryService {
   }
 
   searchFuzzy(query: string, limit = 5): SearchResult[] {
-    if (!this.isLoaded) return [];
+    if (!this.isLoaded || !query) return [];
     
-    const normalizedQuery = (query || '').toLowerCase().trim();
+    const normalizedQuery = String(query).toLowerCase().trim();
     if (!normalizedQuery) return [];
     
     const results: SearchResult[] = [];
