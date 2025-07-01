@@ -48,18 +48,74 @@ class HuggingFaceService {
   private config: HuggingFaceConfig;
 
   constructor() {
+    const rawSpaceUrl = import.meta.env.VITE_HUGGINGFACE_SPACE_URL || '';
     this.config = {
-      spaceUrl: import.meta.env.VITE_HUGGINGFACE_SPACE_URL || '',
+      spaceUrl: this.normalizeSpaceUrl(rawSpaceUrl),
       timeout: 15000, // Increased timeout for backend processing
       retryAttempts: 2
     };
+    
+    // Validate URL configuration on initialization
+    this.validateConfiguration();
+  }
+
+  /**
+   * Normalize the space URL to ensure it doesn't have duplicate /api/predict paths
+   */
+  private normalizeSpaceUrl(url: string): string {
+    if (!url || url === '') {
+      return '';
+    }
+
+    // Remove trailing slashes
+    let normalizedUrl = url.replace(/\/+$/, '');
+    
+    // Remove existing /api/predict if present to avoid duplication
+    if (normalizedUrl.endsWith('/api/predict')) {
+      normalizedUrl = normalizedUrl.replace(/\/api\/predict$/, '');
+    }
+    
+    console.log(`Normalized space URL from "${url}" to "${normalizedUrl}"`);
+    return normalizedUrl;
+  }
+
+  /**
+   * Build the complete API URL for making requests
+   */
+  private buildApiUrl(): string {
+    if (!this.config.spaceUrl) {
+      throw new Error('Space URL not configured');
+    }
+    
+    const apiUrl = `${this.config.spaceUrl}/api/predict`;
+    console.log(`Built API URL: ${apiUrl}`);
+    return apiUrl;
+  }
+
+  /**
+   * Validate the current configuration
+   */
+  private validateConfiguration(): void {
+    if (!this.config.spaceUrl || this.config.spaceUrl === '' || this.config.spaceUrl === 'https://your-space-url.hf.space') {
+      console.warn('Hugging Face Space URL not properly configured. Set VITE_HUGGINGFACE_SPACE_URL environment variable.');
+      return;
+    }
+
+    // Validate URL format
+    try {
+      new URL(this.config.spaceUrl);
+      console.log('Hugging Face configuration validated successfully');
+    } catch (error) {
+      console.error('Invalid Hugging Face Space URL format:', this.config.spaceUrl);
+    }
   }
 
   /**
    * Update the Hugging Face Space URL configuration
    */
   setSpaceUrl(spaceUrl: string): void {
-    this.config.spaceUrl = spaceUrl;
+    this.config.spaceUrl = this.normalizeSpaceUrl(spaceUrl);
+    this.validateConfiguration();
   }
 
   /**
@@ -87,12 +143,15 @@ class HuggingFaceService {
     for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
       try {
         console.log(`Enhanced backend translation attempt ${attempt}/${this.config.retryAttempts} for: "${trimmedQuery}"`);
+        
+        const apiUrl = this.buildApiUrl();
+        console.log(`Making request to: ${apiUrl}`);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
         try {
-          const response = await fetch(`${this.config.spaceUrl}/api/predict`, {
+          const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -118,7 +177,7 @@ class HuggingFaceService {
               errorMessage = errorText || errorMessage;
             }
 
-            throw new Error(`Enhanced backend API error: ${errorMessage}`);
+            throw new Error(`Enhanced backend API error: ${errorMessage} (URL: ${apiUrl})`);
           }
 
           const result: { data: [BackendTranslationResponse] } = await response.json();
