@@ -1,6 +1,6 @@
 import { dictionaryService } from './dictionaryService';
 import { searchEngine } from './searchEngine';
-import { huggingFaceService } from './huggingFaceService';
+import { huggingFaceService, BackendTranslationResponse } from './huggingFaceService';
 import { cacheManager } from './cacheManager';
 import { DictionaryEntry } from '../types/dictionary';
 
@@ -237,7 +237,14 @@ class ComprehensiveDictionaryService {
 
     try {
       // Get translation from Hugging Face
-      const translation = await huggingFaceService.translateOnline(inputText);
+      const translationResponse: BackendTranslationResponse = await huggingFaceService.translateOnline(inputText);
+      
+      if (!translationResponse || translationResponse.status === 'error') {
+        return null;
+      }
+
+      // Extract the primary translation from the response
+      const translation = this.extractPrimaryTranslation(translationResponse);
       
       if (!translation) {
         return null;
@@ -271,6 +278,46 @@ class ComprehensiveDictionaryService {
       console.error('Hugging Face online search error:', error);
       return null;
     }
+  }
+
+  /**
+   * Extract the primary translation from BackendTranslationResponse
+   */
+  private extractPrimaryTranslation(response: BackendTranslationResponse): string {
+    // Prioritize local dictionary, then AI response, then web search
+    if (response.local_dictionary) {
+      return this.extractTranslationFromText(response.local_dictionary);
+    } else if (response.ai_response) {
+      return this.extractTranslationFromText(response.ai_response);
+    } else if (response.web_search) {
+      return this.extractTranslationFromText(response.web_search);
+    }
+    return '';
+  }
+
+  /**
+   * Extract Ibibio translation from formatted text response
+   */
+  private extractTranslationFromText(text: string): string {
+    // Look for common patterns in the response text
+    const patterns = [
+      /Translation:\s*([^.\n]+)/i,
+      /Ibibio:\s*([^.\n]+)/i,
+      /means?\s*"([^"]+)"/i,
+      /is\s+"([^"]+)"/i,
+      /"([^"]+)"/
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1] && match[1].trim()) {
+        return match[1].trim();
+      }
+    }
+
+    // Fallback: return first line if no pattern matches
+    const firstLine = text.split('\n')[0];
+    return firstLine.trim();
   }
 
   private createCombinedTranslation(

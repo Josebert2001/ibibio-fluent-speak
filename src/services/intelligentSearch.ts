@@ -1,3 +1,4 @@
+
 import { dictionaryService } from './dictionaryService';
 import { groqService } from './groqService';
 import { langchainAgentService } from './langchainAgent';
@@ -39,7 +40,11 @@ class IntelligentSearchService {
     try {
       const webResult = await langchainAgentService.searchWithAgent(trimmedQuery);
       if (webResult.result) {
-        return webResult;
+        return {
+          result: webResult.result,
+          source: 'langchain-web',
+          confidence: webResult.confidence
+        };
       }
     } catch (error) {
       console.warn('Langchain web search failed:', error);

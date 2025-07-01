@@ -1,3 +1,4 @@
+
 import { DictionaryEntry } from '../types/dictionary';
 
 /**
@@ -290,7 +291,7 @@ class HuggingFaceService {
       return 'adjective';
     }
 
-    if (['the', 'a', 'an', 'in', 'on', 'at', 'by', 'for', 'with', 'to', 'from'].includes(trimmed)) {
+    if (['the', 'a', 'an', 'in', 'on', 'at', 'by', 'for', 'of', 'with', 'to', 'from'].includes(trimmed)) {
       return 'preposition';
     }
 
