@@ -58,18 +58,25 @@ class SemanticAnalyzer {
 
     // If query is a single word and appears as a complete word in english
     if (queryWords.length === 1 && englishWords.includes(query)) {
-      return 0.9;
+      return 0.95;
     }
 
-    // Starts with query
-    if (english.startsWith(query)) return 0.8;
+    // Starts with query followed by word boundary
+    const startsWithPattern = new RegExp(`^${this.escapeRegex(query)}\\b`, 'i');
+    if (startsWithPattern.test(english)) return 0.9;
 
-    // Contains query as word boundary
+    // Contains query as word boundary at start of phrase
     const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
-    if (wordBoundaryRegex.test(english)) return 0.7;
+    if (wordBoundaryRegex.test(english)) {
+      // Higher score if at the beginning
+      if (english.toLowerCase().startsWith(query.toLowerCase())) {
+        return 0.85;
+      }
+      return 0.7;
+    }
 
     // Contains query
-    if (english.includes(query)) return 0.5;
+    if (english.includes(query)) return 0.4;
 
     return 0;
   }
@@ -110,47 +117,71 @@ class SemanticAnalyzer {
     const meaningLower = meaning.toLowerCase();
     const queryLower = query.toLowerCase();
 
-    // Check for direct translation indicators
+    // First check if it starts with query (highest priority for direct translations)
+    if (meaningLower.startsWith(queryLower + ',') || 
+        meaningLower.startsWith(queryLower + ';') ||
+        meaningLower.startsWith(queryLower + ' ') ||
+        meaningLower === queryLower) {
+      return 1.0;
+    }
+
+    // Check for "to [query]" pattern at the start
+    if (meaningLower.startsWith(`to ${queryLower}`)) {
+      return 1.0;
+    }
+
+    // Check for direct translation indicators (but penalize if in compound phrases)
     const directIndicators = [
-      `to ${queryLower}`,
-      `${queryLower} `,
-      ` ${queryLower}`,
-      `${queryLower};`,
       `${queryLower},`,
-      `${queryLower}.`
+      `${queryLower};`,
+      `${queryLower}.`,
+      `, ${queryLower},`,
+      `, ${queryLower};`,
+      `, ${queryLower}.`
     ];
 
-    // Check if the query appears as a direct translation (not in a phrase)
     for (const indicator of directIndicators) {
       if (meaningLower.includes(indicator)) {
-        return 1.0;
+        // If it's at the very beginning, it's a primary translation
+        if (meaningLower.indexOf(indicator) === 0) {
+          return 1.0;
+        }
+        // If it's in a list but not compound, still good
+        return 0.9;
       }
     }
 
-    // Check for compound/contextual usage
+    // Penalize compound/contextual usage heavily
     const contextualPatterns = [
       `${queryLower} from`,
       `${queryLower} something`,
       `${queryLower} someone`,
-      `to prevent.*${queryLower}`,
-      `to make.*${queryLower}`,
-      `cause.*${queryLower}`
+      `${queryLower} (something|someone|from)`,
+      `prevent.*${queryLower}`,
+      `make.*${queryLower}`,
+      `cause.*${queryLower}`,
+      `${queryLower}.*from happening`,
+      `to.*${queryLower}.*from`
     ];
 
     for (const pattern of contextualPatterns) {
       const regex = new RegExp(pattern, 'i');
       if (regex.test(meaningLower)) {
-        return 0.6; // Lower score for contextual usage
+        return 0.3; // Much lower score for contextual usage
       }
     }
 
-    // Simple word boundary check
+    // Word boundary check with position consideration
     const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
     if (wordBoundaryRegex.test(meaningLower)) {
-      return 0.8;
+      const position = meaningLower.search(wordBoundaryRegex);
+      // Earlier position gets higher score
+      if (position < 10) return 0.8;
+      if (position < 20) return 0.7;
+      return 0.6;
     }
 
-    return 0.4;
+    return 0.2;
   }
 
   private calculateDefinitionScore(query: string, meaning: string): number {
@@ -161,8 +192,25 @@ class SemanticAnalyzer {
 
     // Check if this appears to be a primary definition
     // Primary definitions usually start with the word or "to [word]"
-    if (meaningLower.startsWith(queryLower) || meaningLower.startsWith(`to ${queryLower}`)) {
+    if (meaningLower.startsWith(queryLower + ',') || 
+        meaningLower.startsWith(queryLower + ';') || 
+        meaningLower.startsWith(queryLower + ' ') ||
+        meaningLower === queryLower) {
       return 1.0;
+    }
+
+    if (meaningLower.startsWith(`to ${queryLower}`)) {
+      return 1.0;
+    }
+
+    // Parse the first segment more carefully
+    const firstSegment = meaningLower.split(/[;,]/)[0].trim();
+    
+    // Check if query is the main word in the first segment
+    if (firstSegment === queryLower || 
+        firstSegment === `to ${queryLower}` ||
+        firstSegment.startsWith(`${queryLower} `)) {
+      return 0.95;
     }
 
     // Check for definition structure patterns
@@ -170,7 +218,12 @@ class SemanticAnalyzer {
       // This looks like a structured definition with primary meaning first
       const firstPart = meaningLower.split(/[;,]/)[0];
       if (firstPart.includes(queryLower)) {
-        return 0.9;
+        // Check if it's a word boundary match
+        const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
+        if (wordBoundaryRegex.test(firstPart)) {
+          return 0.8;
+        }
+        return 0.6;
       }
     }
 
@@ -180,7 +233,13 @@ class SemanticAnalyzer {
       return 0.7;
     }
 
-    return 0.5;
+    // Check if query appears anywhere with word boundaries
+    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
+    if (wordBoundaryRegex.test(meaningLower)) {
+      return 0.4;
+    }
+
+    return 0.2;
   }
 
   /**
