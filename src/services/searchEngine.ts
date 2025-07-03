@@ -1,4 +1,5 @@
 import { DictionaryEntry, SearchResult } from '../types/dictionary';
+import { semanticAnalyzer } from './semanticAnalyzer';
 
 interface SearchIndex {
   exact: Map<string, DictionaryEntry[]>;
@@ -81,70 +82,58 @@ class SearchEngine {
     const normalizedQuery = String(query).toLowerCase().trim();
     if (!normalizedQuery) return [];
     
-    const results: Map<string, SearchResult> = new Map();
+    const candidateEntries = new Set<DictionaryEntry>();
 
-    // Exact matches (highest priority)
+    // Collect all potential matches
+    // Exact matches
     const exactMatches = this.searchExact(normalizedQuery);
-    exactMatches.forEach(entry => {
-      results.set(entry.id, {
-        entry,
-        confidence: 1.0,
-        source: 'dictionary'
-      });
-    });
+    exactMatches.forEach(entry => candidateEntries.add(entry));
 
     // Prefix matches
     const prefixMatches = this.index.prefix.get(normalizedQuery) || [];
-    prefixMatches.forEach(entry => {
-      if (!results.has(entry.id)) {
-        const confidence = normalizedQuery.length / String(entry.english).length;
-        results.set(entry.id, {
-          entry,
-          confidence: Math.min(0.9, confidence),
-          source: 'dictionary'
-        });
-      }
-    });
+    prefixMatches.forEach(entry => candidateEntries.add(entry));
 
     // Word-based matches
     const words = normalizedQuery.split(/\s+/);
     words.forEach(word => {
       if (word.length > 2) {
         const wordMatches = this.index.words.get(word) || [];
-        wordMatches.forEach(entry => {
-          if (!results.has(entry.id)) {
-            const confidence = this.calculateWordMatchConfidence(normalizedQuery, String(entry.english).toLowerCase());
-            if (confidence > 0.3) {
-              results.set(entry.id, {
-                entry,
-                confidence,
-                source: 'dictionary'
-              });
-            }
-          }
+        wordMatches.forEach(entry => candidateEntries.add(entry));
+      }
+    });
+
+    // Contains matches
+    this.index.exact.forEach((entries, key) => {
+      if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
+        entries.forEach(entry => candidateEntries.add(entry));
+      }
+    });
+
+    // Also search in meanings/definitions
+    this.index.exact.forEach((entries) => {
+      entries.forEach(entry => {
+        if (entry.meaning && entry.meaning.toLowerCase().includes(normalizedQuery)) {
+          candidateEntries.add(entry);
+        }
+      });
+    });
+
+    // Apply semantic analysis to all candidates
+    const results: SearchResult[] = [];
+    candidateEntries.forEach(entry => {
+      const semanticScore = semanticAnalyzer.analyzeMatch(normalizedQuery, entry);
+      
+      // Only include results with meaningful scores
+      if (semanticScore.totalScore > 0.1) {
+        results.push({
+          entry,
+          confidence: semanticScore.totalScore,
+          source: 'dictionary'
         });
       }
     });
 
-    // Contains matches (lower priority)
-    if (results.size < limit) {
-      this.index.exact.forEach((entries, key) => {
-        if (key.includes(normalizedQuery) || normalizedQuery.includes(key)) {
-          entries.forEach(entry => {
-            if (!results.has(entry.id)) {
-              const confidence = Math.min(normalizedQuery.length, key.length) / Math.max(normalizedQuery.length, key.length);
-              results.set(entry.id, {
-                entry,
-                confidence: confidence * 0.6,
-                source: 'dictionary'
-              });
-            }
-          });
-        }
-      });
-    }
-
-    return Array.from(results.values())
+    return results
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, limit);
   }
