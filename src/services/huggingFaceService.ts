@@ -49,11 +49,15 @@ class HuggingFaceService {
 
   constructor() {
     const rawSpaceUrl = import.meta.env.VITE_HUGGINGFACE_SPACE_URL || '';
+    console.log('Raw environment variable VITE_HUGGINGFACE_SPACE_URL:', rawSpaceUrl);
+    
     this.config = {
       spaceUrl: this.normalizeSpaceUrl(rawSpaceUrl),
       timeout: 15000, // Increased timeout for backend processing
       retryAttempts: 2
     };
+    
+    console.log('Initialized HuggingFaceService with config:', this.config);
     
     // Validate URL configuration on initialization
     this.validateConfiguration();
@@ -64,6 +68,7 @@ class HuggingFaceService {
    */
   private normalizeSpaceUrl(url: string): string {
     if (!url || url === '') {
+      console.warn('Empty URL provided to normalizeSpaceUrl');
       return '';
     }
 
@@ -73,6 +78,7 @@ class HuggingFaceService {
     // Remove existing /api/predict if present to avoid duplication
     if (normalizedUrl.endsWith('/api/predict')) {
       normalizedUrl = normalizedUrl.replace(/\/api\/predict$/, '');
+      console.log('Removed existing /api/predict from URL');
     }
     
     console.log(`Normalized space URL from "${url}" to "${normalizedUrl}"`);
@@ -96,17 +102,27 @@ class HuggingFaceService {
    * Validate the current configuration
    */
   private validateConfiguration(): void {
+    console.log('Validating HuggingFace configuration...');
+    console.log('Environment check - VITE_HUGGINGFACE_SPACE_URL:', import.meta.env.VITE_HUGGINGFACE_SPACE_URL);
+    
     if (!this.config.spaceUrl || this.config.spaceUrl === '' || this.config.spaceUrl === 'https://your-space-url.hf.space') {
-      console.warn('Hugging Face Space URL not properly configured. Set VITE_HUGGINGFACE_SPACE_URL environment variable.');
+      console.warn('Hugging Face Space URL not properly configured. Current value:', this.config.spaceUrl);
+      console.warn('Expected: https://josebert-ibi-voice-backend.hf.space');
+      console.warn('Please ensure VITE_HUGGINGFACE_SPACE_URL environment variable is set correctly in Vercel.');
       return;
     }
 
     // Validate URL format
     try {
-      new URL(this.config.spaceUrl);
+      const urlObj = new URL(this.config.spaceUrl);
+      console.log('URL validation passed:', {
+        protocol: urlObj.protocol,
+        hostname: urlObj.hostname,
+        pathname: urlObj.pathname
+      });
       console.log('Hugging Face configuration validated successfully');
     } catch (error) {
-      console.error('Invalid Hugging Face Space URL format:', this.config.spaceUrl);
+      console.error('Invalid Hugging Face Space URL format:', this.config.spaceUrl, error);
     }
   }
 
@@ -114,6 +130,7 @@ class HuggingFaceService {
    * Update the Hugging Face Space URL configuration
    */
   setSpaceUrl(spaceUrl: string): void {
+    console.log('Updating space URL from:', this.config.spaceUrl, 'to:', spaceUrl);
     this.config.spaceUrl = this.normalizeSpaceUrl(spaceUrl);
     this.validateConfiguration();
   }
@@ -145,29 +162,34 @@ class HuggingFaceService {
         console.log(`Enhanced backend translation attempt ${attempt}/${this.config.retryAttempts} for: "${trimmedQuery}"`);
         
         const apiUrl = this.buildApiUrl();
-        console.log(`Making request to: ${apiUrl}`);
+        console.log(`Making request to API URL: ${apiUrl}`);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 
         try {
+          const requestBody = {
+            data: [trimmedQuery],
+            fn_index: 0 // Corresponds to translate_interface function
+          };
+          console.log('Request body:', requestBody);
+
           const response = await fetch(apiUrl, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json'
             },
-            body: JSON.stringify({
-              data: [trimmedQuery],
-              fn_index: 0 // Corresponds to translate_interface function
-            }),
+            body: JSON.stringify(requestBody),
             signal: controller.signal
           });
 
           clearTimeout(timeoutId);
+          console.log('Response status:', response.status, response.statusText);
 
           if (!response.ok) {
             const errorText = await response.text();
+            console.error('API Error Response:', errorText);
             let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
             
             try {
@@ -181,6 +203,7 @@ class HuggingFaceService {
           }
 
           const result: { data: [BackendTranslationResponse] } = await response.json();
+          console.log('API Response:', result);
 
           if (!result || !Array.isArray(result.data) || result.data.length === 0) {
             throw new Error('Invalid response format from enhanced backend');
@@ -424,8 +447,11 @@ class HuggingFaceService {
    */
   async testConnection(): Promise<boolean> {
     try {
+      console.log('Testing connection to Hugging Face backend...');
       const response = await this.translateOnline('hello');
-      return response.status !== 'error';
+      const isSuccess = response.status !== 'error';
+      console.log('Connection test result:', isSuccess);
+      return isSuccess;
     } catch (error) {
       console.error('Enhanced backend connection test failed:', error);
       return false;
@@ -437,12 +463,22 @@ class HuggingFaceService {
    * @returns Object with service information
    */
   getStats() {
+    const isConfigured = !!(this.config.spaceUrl && 
+      this.config.spaceUrl !== '' && 
+      this.config.spaceUrl !== 'https://your-space-url.hf.space');
+    
+    console.log('Service stats:', {
+      spaceUrl: this.config.spaceUrl,
+      isConfigured,
+      expectedUrl: 'https://josebert-ibi-voice-backend.hf.space'
+    });
+
     return {
       serviceName: 'Enhanced Hugging Face Backend',
       spaceUrl: this.config.spaceUrl,
       timeout: this.config.timeout,
       retryAttempts: this.config.retryAttempts,
-      isConfigured: !!(this.config.spaceUrl && this.config.spaceUrl !== '' && this.config.spaceUrl !== 'https://your-space-url.hf.space'),
+      isConfigured,
       features: ['AI Translation', 'Local Dictionary', 'Web Search', 'Multi-source Validation']
     };
   }
