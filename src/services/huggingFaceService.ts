@@ -202,7 +202,7 @@ class HuggingFaceService {
             throw new Error(`Enhanced backend API error: ${errorMessage} (URL: ${apiUrl})`);
           }
 
-          const result: { data: [BackendTranslationResponse] } = await response.json();
+          const result: { data: BackendTranslationResponse[] } = await response.json();
           console.log('API Response:', result);
 
           if (!result || !Array.isArray(result.data) || result.data.length === 0) {
