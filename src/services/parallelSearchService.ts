@@ -186,11 +186,39 @@ class ParallelSearchService {
     startTime: number
   ): Promise<ParallelSearchResult> {
     
-    // Step 1: Search local dictionary
+    // Step 1: Try Langchain agent first (primary coordinator)
+    if (langchainAgentService.isAvailable()) {
+      try {
+        console.log(`Using Langchain agent as primary coordinator for: "${normalizedQuery}"`);
+        const agentResult = await langchainAgentService.searchWithAgent(normalizedQuery);
+        
+        if (agentResult.result) {
+          // Get local result for comparison/alternatives
+          const localResult = await this.searchLocal(normalizedQuery);
+          
+          const result: ParallelSearchResult = {
+            result: agentResult.result,
+            confidence: agentResult.confidence * 100,
+            source: agentResult.source,
+            alternatives: localResult.alternatives,
+            sources: [agentResult.source, ...(localResult.result ? ['local_dictionary'] : [])],
+            responseTime: Date.now() - startTime,
+            isMultiWord: false
+          };
+
+          cacheManager.set(normalizedQuery, result, result.source);
+          return result;
+        }
+      } catch (agentError) {
+        console.warn('Langchain agent failed, trying fallback methods:', agentError);
+      }
+    }
+    
+    // Step 2: Fallback to local dictionary search
     const localResult = await this.searchLocal(normalizedQuery);
     
     if (localResult.result) {
-      // Found in local dictionary - return immediately
+      console.log(`Found in local dictionary: "${normalizedQuery}"`);
       const result: ParallelSearchResult = {
         result: localResult.result,
         confidence: localResult.confidence,
@@ -201,59 +229,32 @@ class ParallelSearchService {
         isMultiWord: false
       };
 
-      // Cache the result
       cacheManager.set(normalizedQuery, result, result.source);
       return result;
     }
 
-    // Step 2: Not found locally - try online search with Hugging Face
-    console.log(`"${normalizedQuery}" not found in local dictionary. Searching with Hugging Face...`);
+    // Step 3: Fallback to direct Hugging Face backend
+    console.log(`"${normalizedQuery}" not found locally. Trying Hugging Face backend directly...`);
     
-    // Step 3: Try Langchain agent first (if available)
-    if (langchainAgentService.isAvailable()) {
-      try {
-        const agentResult = await langchainAgentService.searchWithAgent(normalizedQuery);
-        
-        if (agentResult.result) {
-          const result: ParallelSearchResult = {
-            result: agentResult.result,
-            confidence: agentResult.confidence * 100,
-            source: agentResult.source,
-            alternatives: [],
-            sources: [agentResult.source],
-            responseTime: Date.now() - startTime,
-            isMultiWord: false
-          };
-
-          cacheManager.set(normalizedQuery, result, result.source);
-          return result;
-        }
-      } catch (agentError) {
-        console.warn('Langchain agent search failed, trying Hugging Face fallback:', agentError);
-      }
-    }
-    
-    // Step 4: Fallback to Hugging Face online search
     try {
       const huggingFaceResult = await huggingFaceService.getDictionaryEntry(normalizedQuery);
       
       if (huggingFaceResult) {
         const result: ParallelSearchResult = {
           result: huggingFaceResult,
-          confidence: 85, // Hugging Face results get 85% confidence
-          source: 'huggingface_online',
+          confidence: 85,
+          source: 'huggingface_direct',
           alternatives: [],
-          sources: ['huggingface_online'],
+          sources: ['huggingface_backend'],
           responseTime: Date.now() - startTime,
           isMultiWord: false
         };
 
-        // Cache the Hugging Face result
         cacheManager.set(normalizedQuery, result, result.source);
         return result;
       }
     } catch (huggingFaceError) {
-      console.error('Hugging Face search failed:', huggingFaceError);
+      console.error('Hugging Face direct search failed:', huggingFaceError);
     }
 
     // No results found anywhere

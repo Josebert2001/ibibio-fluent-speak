@@ -1,4 +1,6 @@
 import { DynamicTool } from '@langchain/core/tools';
+import { huggingFaceService } from './huggingFaceService';
+import { dictionaryService } from './dictionaryService';
 
 export const createCulturalContextTool = () => {
   return new DynamicTool({
@@ -151,6 +153,80 @@ export const createExampleSentenceTool = () => {
         return JSON.stringify({
           success: false,
           error: 'Failed to generate example sentences'
+        });
+      }
+    }
+  });
+};
+
+export const createHuggingFaceBackendTool = () => {
+  return new DynamicTool({
+    name: 'huggingface_backend_search',
+    description: 'Search using the enhanced Hugging Face backend that provides AI translation, local dictionary lookup, and web search. Input should be an English word or phrase.',
+    func: async (input: string): Promise<string> => {
+      try {
+        console.log('Searching Hugging Face backend for:', input);
+        
+        const response = await huggingFaceService.translateOnline(input);
+        
+        if (response.status === 'error') {
+          return JSON.stringify({
+            success: false,
+            error: response.error || 'Backend search failed'
+          });
+        }
+
+        return JSON.stringify({
+          success: true,
+          query: response.query,
+          ai_response: response.ai_response,
+          local_dictionary: response.local_dictionary,
+          web_search: response.web_search,
+          primary_translation: huggingFaceService.extractPrimaryTranslation(response),
+          confidence: 0.9,
+          source: 'huggingface_backend'
+        });
+      } catch (error) {
+        console.error('Hugging Face backend search error:', error);
+        return JSON.stringify({
+          success: false,
+          error: 'Failed to search Hugging Face backend'
+        });
+      }
+    }
+  });
+};
+
+export const createLocalDictionaryTool = () => {
+  return new DynamicTool({
+    name: 'local_dictionary_search',
+    description: 'Search the local Ibibio dictionary for direct translations. Input should be an English word or phrase.',
+    func: async (input: string): Promise<string> => {
+      try {
+        console.log('Searching local dictionary for:', input);
+        
+        const result = dictionaryService.search(input);
+        
+        if (result) {
+          return JSON.stringify({
+            success: true,
+            english: result.english,
+            ibibio: result.ibibio,
+            meaning: result.meaning,
+            confidence: 0.95,
+            source: 'local_dictionary'
+          });
+        }
+
+        return JSON.stringify({
+          success: false,
+          message: 'Not found in local dictionary'
+        });
+      } catch (error) {
+        console.error('Local dictionary search error:', error);
+        return JSON.stringify({
+          success: false,
+          error: 'Failed to search local dictionary'
         });
       }
     }

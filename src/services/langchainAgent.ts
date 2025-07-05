@@ -6,6 +6,8 @@ import {
   createCulturalContextTool, 
   createPronunciationTool, 
   createExampleSentenceTool,
+  createHuggingFaceBackendTool,
+  createLocalDictionaryTool,
   createComprehensiveSearchTool 
 } from './langchainTools';
 import { groqService } from './groqService';
@@ -41,8 +43,10 @@ class LangchainAgentService {
       // Get the prompt template
       const prompt = await pull<any>('hwchase17/react');
 
-      // Create enhanced tools array
+      // Create enhanced tools array - prioritize Hugging Face backend
       const tools = [
+        createHuggingFaceBackendTool(),
+        createLocalDictionaryTool(),
         createGlosbeSearchTool(),
         createCulturalContextTool(),
         createPronunciationTool(),
@@ -65,7 +69,7 @@ class LangchainAgentService {
       });
 
       this.isInitialized = true;
-      console.log('Enhanced Langchain agent initialized successfully with', tools.length, 'tools');
+      console.log('Enhanced Langchain agent initialized successfully with', tools.length, 'tools - prioritizing Hugging Face backend');
     } catch (error) {
       console.error('Failed to initialize Langchain agent:', error);
       this.initializationFailed = true;
@@ -109,17 +113,24 @@ class LangchainAgentService {
     }
 
     try {
-      // Optimized prompt for faster processing
-      const prompt = `Translate "${query}" from English to Ibibio. Provide a concise JSON response:
+      // Enhanced prompt for intelligent coordination
+      const prompt = `You are an intelligent coordinator for English to Ibibio translation. Your task is to find the most accurate translation for "${query}".
+
+SEARCH STRATEGY:
+1. First, use huggingface_backend_search tool - this accesses a multi-source backend with AI, local dictionary, and web search
+2. If backend unavailable, use local_dictionary_search tool for direct translations
+3. For context disambiguation (like "stop" → "tịre" vs "tịbe"), prioritize direct translations over contextual usage
+
+RESPONSE FORMAT (JSON only):
 {
-  "ibibio": "translation",
-  "meaning": "brief definition",
+  "ibibio": "primary_translation",
+  "meaning": "clear definition", 
   "confidence": 0.95,
-  "examples": [{"english": "example", "ibibio": "translation"}],
-  "cultural": "brief context"
+  "source": "primary_source_used",
+  "reasoning": "why this translation was chosen"
 }
 
-Focus on accuracy and speed. Return only the JSON object.`;
+Focus on accuracy. For ambiguous words, choose the most common/direct translation.`;
 
       const result = await this.agent.invoke({
         input: prompt
