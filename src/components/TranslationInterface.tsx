@@ -41,6 +41,14 @@ const TranslationInterface = () => {
   const [onlineResult, setOnlineResult] = useState<DictionaryEntry | null>(null);
   const [wordBreakdown, setWordBreakdown] = useState<any[]>([]);
   
+  // Performance and response tracking
+  const [responseTime, setResponseTime] = useState<number>(0);
+  const [performanceMetrics, setPerformanceMetrics] = useState<{
+    averageResponseTime: number;
+    successRate: number;
+    totalSearches: number;
+  } | null>(null);
+  
   const [recentSearches, setRecentSearches] = useState([
     { english: 'hello', ibibio: 'nno', meaning: 'A greeting; expression of welcome' },
     { english: 'love', ibibio: 'uduak', meaning: 'Deep affection or care for someone' },
@@ -208,7 +216,13 @@ const TranslationInterface = () => {
             setCurrentTranslation(searchResult.result);
             setSearchSource(searchResult.source);
             setConfidence(searchResult.confidence / 100);
-            setAlternatives(searchResult.alternatives);
+            // Fix: Map alternatives to correct format
+            const formattedAlternatives = (searchResult.alternatives || []).map(alt => ({
+              entry: alt,
+              confidence: 0.8, // Default confidence for alternatives
+              reason: 'Alternative translation'
+            }));
+            setAlternatives(formattedAlternatives);
             setResponseTime(searchTime);
             
             // Set enhanced sentence processing data

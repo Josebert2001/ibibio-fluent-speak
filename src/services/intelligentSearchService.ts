@@ -90,12 +90,16 @@ class IntelligentSearchService {
     // Pass 1: Exact matches
     const exactResults = searchEngine.searchExact(query);
     if (exactResults.length > 0) {
-      results.push(...exactResults.map(entry => ({ entry, confidence: 1.0, source: 'exact' })));
+      results.push(...exactResults.map(entry => ({ entry, confidence: 1.0, source: 'exact' as const })));
     }
 
     // Pass 2: Fuzzy search for close matches
     const fuzzyResults = searchEngine.searchFuzzy(query, 10);
-    results.push(...fuzzyResults.filter(r => r.confidence > 0.3));
+    results.push(...fuzzyResults.filter(r => r.confidence > 0.3).map(r => ({
+      entry: r.entry,
+      confidence: r.confidence,
+      source: 'dictionary' as const
+    })));
 
     // Pass 3: Semantic search (search meanings and examples)
     const semanticResults = this.performSemanticSearch(query);
@@ -137,7 +141,7 @@ class IntelligentSearchService {
       }
 
       if (confidence > 0) {
-        results.push({ entry, confidence, source: 'semantic' });
+        results.push({ entry, confidence, source: 'semantic' as const });
       }
     });
 
@@ -167,7 +171,7 @@ class IntelligentSearchService {
       }
 
       if (confidence > 0) {
-        results.push({ entry, confidence, source: 'contextual' });
+        results.push({ entry, confidence, source: 'contextual' as const });
       }
     });
 
@@ -283,6 +287,8 @@ class IntelligentSearchService {
         return 'Found in meaning or examples';
       case 'contextual':
         return 'Related context or category';
+      case 'dictionary':
+        return `${Math.round(result.confidence * 100)}% match`;
       default:
         return `${Math.round(result.confidence * 100)}% match`;
     }

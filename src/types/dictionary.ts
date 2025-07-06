@@ -1,3 +1,4 @@
+
 export interface DictionaryEntry {
   id: string;
   english: string;
@@ -16,7 +17,7 @@ export interface DictionaryEntry {
 export interface SearchResult {
   entry: DictionaryEntry;
   confidence: number;
-  source: 'dictionary' | 'ai' | 'online';
+  source: 'dictionary' | 'ai' | 'online' | 'exact' | 'semantic' | 'contextual';
 }
 
 export interface AlternativeTranslation {
