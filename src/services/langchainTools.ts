@@ -1,7 +1,72 @@
+
 import { DynamicTool } from '@langchain/core/tools';
 import { huggingFaceService } from './huggingFaceService';
 import { dictionaryService } from './dictionaryService';
 import { semanticAnalyzer } from './semanticAnalyzer';
+
+// Helper functions moved outside of tool objects
+const analyzeBackendResponse = (response: any, query: string) => {
+  // Analyze the quality and context of the backend response
+  const hasAI = response.ai_response && response.ai_response.length > 0;
+  const hasLocal = response.local_dictionary && response.local_dictionary.length > 0;
+  const hasWeb = response.web_search && response.web_search.length > 0;
+
+  let confidence = 0.6; // Base confidence
+  let analysis = [];
+  let recommendations = [];
+
+  if (hasAI) {
+    confidence += 0.2;
+    analysis.push('AI translation available');
+  }
+
+  if (hasLocal) {
+    confidence += 0.15;
+    analysis.push('Local dictionary match found');
+    recommendations.push('Prioritize local dictionary for direct translations');
+  }
+
+  if (hasWeb) {
+    confidence += 0.1;
+    analysis.push('Web search results available');
+  }
+
+  // Cap confidence at 0.95
+  confidence = Math.min(confidence, 0.95);
+
+  return {
+    confidence,
+    analysis,
+    recommendations
+  };
+};
+
+const calculateLinguisticComplexity = (query: string) => {
+  const words = query.split(/\s+/);
+  let complexity = 0.5; // Base complexity
+
+  // Single words are generally simpler
+  if (words.length === 1) complexity -= 0.2;
+  
+  // Multiple words increase complexity
+  if (words.length > 3) complexity += 0.3;
+  
+  // Common words are simpler
+  const commonWords = ['hello', 'water', 'food', 'good', 'bad', 'big', 'small', 'love', 'family'];
+  if (commonWords.includes(query.toLowerCase())) complexity -= 0.2;
+
+  return Math.max(0.1, Math.min(complexity, 1.0));
+};
+
+const getSuggestedApproach = (contextType: string, complexity: number) => {
+  if (contextType === 'direct_translation' && complexity < 0.5) {
+    return 'local_dictionary_priority';
+  } else if (complexity > 0.7) {
+    return 'ai_backend_priority';
+  } else {
+    return 'hybrid_approach';
+  }
+};
 
 export const createCulturalContextTool = () => {
   return new DynamicTool({
@@ -193,11 +258,11 @@ export const createHuggingFaceBackendTool = () => {
         const primaryTranslation = huggingFaceService.extractPrimaryTranslation(response);
         
         // Analyze the backend response for quality and context
-        const analysisResult = this.analyzeBackendResponse(response, input);
+        const analysisResult = analyzeBackendResponse(response, input);
 
         return JSON.stringify({
           success: true,
-          query: response.query,
+          query: response.query || input,
           primary_translation: primaryTranslation,
           ai_response: response.ai_response,
           local_dictionary: response.local_dictionary,
@@ -215,42 +280,6 @@ export const createHuggingFaceBackendTool = () => {
           source: 'huggingface_backend'
         });
       }
-    },
-
-    analyzeBackendResponse: (response: any, query: string) => {
-      // Analyze the quality and context of the backend response
-      const hasAI = response.ai_response && response.ai_response.length > 0;
-      const hasLocal = response.local_dictionary && response.local_dictionary.length > 0;
-      const hasWeb = response.web_search && response.web_search.length > 0;
-
-      let confidence = 0.6; // Base confidence
-      let analysis = [];
-      let recommendations = [];
-
-      if (hasAI) {
-        confidence += 0.2;
-        analysis.push('AI translation available');
-      }
-
-      if (hasLocal) {
-        confidence += 0.15;
-        analysis.push('Local dictionary match found');
-        recommendations.push('Prioritize local dictionary for direct translations');
-      }
-
-      if (hasWeb) {
-        confidence += 0.1;
-        analysis.push('Web search results available');
-      }
-
-      // Cap confidence at 0.95
-      confidence = Math.min(confidence, 0.95);
-
-      return {
-        confidence,
-        analysis,
-        recommendations
-      };
     }
   });
 };
@@ -274,13 +303,13 @@ export const createLocalDictionaryTool = () => {
             english: result.english,
             ibibio: result.ibibio,
             meaning: result.meaning,
-            confidence: semanticScore.totalScore,
+            confidence: semanticScore?.totalScore || 0.8,
             source: 'local_dictionary',
-            semantic_analysis: {
+            semantic_analysis: semanticScore ? {
               primary_match: semanticScore.primaryMatch,
               context_score: semanticScore.contextScore,
               total_score: semanticScore.totalScore
-            },
+            } : null,
             authoritative: true
           });
         }
@@ -335,7 +364,7 @@ export const createDisambiguationTool = () => {
           }
         };
 
-        const wordRules = disambiguationRules[word.toLowerCase()];
+        const wordRules = disambiguationRules[word?.toLowerCase()];
         
         if (wordRules && options && options.length > 1) {
           // Sort options by priority from rules
@@ -422,7 +451,7 @@ export const createContextAnalyzerTool = () => {
 
         // Word complexity analysis
         const words = query.split(/\s+/);
-        const isSimpleWord = words.length === 1 && words[0].length > 2;
+        const isSimpleWord = words.length === 1 && words[0]?.length > 2;
         const isCompoundPhrase = words.length > 3;
 
         if (isSimpleWord) {
@@ -434,7 +463,7 @@ export const createContextAnalyzerTool = () => {
         }
 
         // Linguistic complexity scoring
-        const linguisticComplexity = this.calculateLinguisticComplexity(query);
+        const linguisticComplexity = calculateLinguisticComplexity(query);
 
         return JSON.stringify({
           success: true,
@@ -443,7 +472,7 @@ export const createContextAnalyzerTool = () => {
           confidence: Math.min(confidence, 0.95),
           linguistic_complexity: linguisticComplexity,
           recommendations: recommendations,
-          suggested_approach: this.getSuggestedApproach(contextType, linguisticComplexity),
+          suggested_approach: getSuggestedApproach(contextType, linguisticComplexity),
           word_count: words.length
         });
       } catch (error) {
@@ -452,33 +481,6 @@ export const createContextAnalyzerTool = () => {
           success: false,
           error: 'Failed to analyze context'
         });
-      }
-    },
-
-    calculateLinguisticComplexity: (query: string) => {
-      const words = query.split(/\s+/);
-      let complexity = 0.5; // Base complexity
-
-      // Single words are generally simpler
-      if (words.length === 1) complexity -= 0.2;
-      
-      // Multiple words increase complexity
-      if (words.length > 3) complexity += 0.3;
-      
-      // Common words are simpler
-      const commonWords = ['hello', 'water', 'food', 'good', 'bad', 'big', 'small', 'love', 'family'];
-      if (commonWords.includes(query.toLowerCase())) complexity -= 0.2;
-
-      return Math.max(0.1, Math.min(complexity, 1.0));
-    },
-
-    getSuggestedApproach: (contextType: string, complexity: number) => {
-      if (contextType === 'direct_translation' && complexity < 0.5) {
-        return 'local_dictionary_priority';
-      } else if (complexity > 0.7) {
-        return 'ai_backend_priority';
-      } else {
-        return 'hybrid_approach';
       }
     }
   });
