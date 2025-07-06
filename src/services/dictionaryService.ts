@@ -1,4 +1,5 @@
 import { DictionaryEntry, SearchResult } from '../types/dictionary';
+import { disambiguationService, DisambiguationResult } from './disambiguationService';
 
 class DictionaryService {
   private dictionary: DictionaryEntry[] = [];
@@ -12,7 +13,7 @@ class DictionaryService {
 
   async loadDictionary(): Promise<void> {
     try {
-      console.log('🔄 Starting dictionary loading process...');
+      console.log('🔄 Starting enhanced dictionary loading process...');
       
       // First try to load from localStorage
       const stored = localStorage.getItem('ibibio-dictionary');
@@ -451,101 +452,171 @@ class DictionaryService {
     }
   }
 
+  /**
+   * ENHANCED SEARCH METHOD with smart word detection and disambiguation
+   */
   search(query: string): DictionaryEntry | null {
     if (!this.isLoaded || !query) return null;
     
     const normalizedQuery = String(query).toLowerCase().trim();
     if (!normalizedQuery) return null;
     
-    console.log(`🔍 Searching for: "${normalizedQuery}" in ${this.dictionary.length} entries`);
+    console.log(`🔍 Enhanced smart search for: "${normalizedQuery}" in ${this.dictionary.length} entries`);
     
-    // Enhanced exact match with logging
-    const exactMatches = this.dictionary.filter(entry => {
-      if (!entry.english || typeof entry.english !== 'string') return false;
-      const entryEnglish = String(entry.english).toLowerCase().trim();
-      return entryEnglish === normalizedQuery;
-    });
+    // Step 1: Find all potential matches using smart detection
+    const allMatches = this.findAllSmartMatches(normalizedQuery);
     
-    if (exactMatches.length > 0) {
-      console.log(`✅ Found ${exactMatches.length} exact match(es):`, exactMatches.map(e => `${e.english} -> ${e.ibibio}`));
-      // Return the most complete entry (with examples, cultural context, etc.)
-      const bestMatch = exactMatches.reduce((best, current) => {
-        const bestScore = this.calculateCompletenessScore(best);
-        const currentScore = this.calculateCompletenessScore(current);
-        return currentScore > bestScore ? current : best;
-      });
-      return bestMatch;
+    if (allMatches.length === 0) {
+      console.log(`❌ No matches found for: "${normalizedQuery}"`);
+      return null;
     }
     
-    // Enhanced partial match with better scoring
-    const partialMatches = this.dictionary.filter(entry => {
-      if (!entry.english || typeof entry.english !== 'string') return false;
-      const entryEnglish = String(entry.english).toLowerCase().trim();
-      
-      // Word boundary matches (higher priority)
-      const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(normalizedQuery)}\\b`, 'i');
-      if (wordBoundaryRegex.test(entryEnglish)) return true;
-      
-      // Contains matches
-      return entryEnglish.includes(normalizedQuery) || normalizedQuery.includes(entryEnglish);
-    });
+    console.log(`✅ Found ${allMatches.length} potential match(es):`, 
+      allMatches.map(m => `${m.english} -> ${m.ibibio} (${(m.confidence * 100).toFixed(1)}%)`));
     
-    if (partialMatches.length > 0) {
-      console.log(`✅ Found ${partialMatches.length} partial match(es):`, partialMatches.map(e => `${e.english} -> ${e.ibibio}`));
+    // Step 2: Check if we have multiple entries for the same English word (disambiguation needed)
+    const sameWordMatches = this.groupMatchesByEnglishWord(allMatches, normalizedQuery);
+    
+    if (sameWordMatches.length > 1) {
+      console.log(`🔀 Multiple meanings found for "${normalizedQuery}", applying disambiguation...`);
       
-      // Score and sort partial matches
-      const scoredMatches = partialMatches.map(entry => ({
-        entry,
-        score: this.calculateMatchScore(normalizedQuery, entry)
-      })).sort((a, b) => b.score - a.score);
+      // Apply disambiguation
+      const disambiguationResult = disambiguationService.disambiguate(normalizedQuery, sameWordMatches);
       
-      console.log('🏆 Top partial match scores:', scoredMatches.slice(0, 3).map(m => 
-        `${m.entry.english} -> ${m.entry.ibibio} (score: ${m.score.toFixed(2)})`
-      ));
-      
-      return scoredMatches[0].entry;
+      if (disambiguationResult) {
+        console.log(`✅ Disambiguation successful: ${disambiguationResult.primaryEntry.english} -> ${disambiguationResult.primaryEntry.ibibio}`);
+        console.log(`📝 Reasoning: ${disambiguationResult.reasoning}`);
+        return disambiguationResult.primaryEntry;
+      }
     }
     
-    console.log(`❌ No match found for: "${normalizedQuery}"`);
-    return null;
+    // Step 3: Return the best match based on enhanced scoring
+    const bestMatch = allMatches[0];
+    console.log(`✅ Best match selected: ${bestMatch.english} -> ${bestMatch.ibibio} (${(bestMatch.confidence * 100).toFixed(1)}%)`);
+    
+    return bestMatch;
   }
 
-  private calculateCompletenessScore(entry: DictionaryEntry): number {
-    let score = 1; // Base score
+  /**
+   * Find all smart matches using enhanced semantic analysis
+   */
+  private findAllSmartMatches(normalizedQuery: string): Array<DictionaryEntry & { confidence: number }> {
+    const matches: Array<DictionaryEntry & { confidence: number }> = [];
     
-    if (entry.examples && entry.examples.length > 0) score += 2;
-    if (entry.cultural && entry.cultural.length > 0) score += 1;
-    if (entry.pronunciation && entry.pronunciation.length > 0) score += 1;
-    if (entry.category && entry.category !== 'general') score += 0.5;
-    if (entry.meaning && entry.meaning.length > 20) score += 0.5; // Detailed meaning
+    this.dictionary.forEach(entry => {
+      if (!entry.english || typeof entry.english !== 'string') return;
+      
+      const entryEnglish = String(entry.english).toLowerCase().trim();
+      
+      // Use enhanced semantic analysis for smart matching
+      const semanticScore = this.calculateSmartMatchScore(normalizedQuery, entryEnglish, entry);
+      
+      if (semanticScore > 0.1) { // Only include meaningful matches
+        matches.push({
+          ...entry,
+          confidence: semanticScore
+        });
+      }
+    });
     
-    return score;
+    // Sort by confidence (highest first)
+    return matches.sort((a, b) => b.confidence - a.confidence);
   }
 
-  private calculateMatchScore(query: string, entry: DictionaryEntry): number {
-    const english = entry.english.toLowerCase();
-    let score = 0;
+  /**
+   * Enhanced smart match scoring that detects words in sentences and lists
+   */
+  private calculateSmartMatchScore(query: string, english: string, entry: DictionaryEntry): number {
+    // Exact match gets highest score
+    if (english === query) {
+      return 1.0;
+    }
     
-    // Exact match bonus
-    if (english === query) score += 10;
+    // Smart detection for comma-separated lists
+    if (english.includes(',')) {
+      const items = english.split(',').map(item => item.trim());
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        
+        if (item === query) {
+          // Higher score for earlier positions in the list
+          return 0.98 - (i * 0.05);
+        }
+        
+        // Word boundary match in list item
+        const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+        if (wordBoundaryRegex.test(item)) {
+          return 0.92 - (i * 0.05);
+        }
+      }
+    }
     
-    // Starts with query
-    if (english.startsWith(query)) score += 5;
+    // Smart detection for sentences (no commas)
+    if (!english.includes(',')) {
+      const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+      if (wordBoundaryRegex.test(english)) {
+        const words = english.split(/\s+/);
+        const queryIndex = words.findIndex(word => 
+          word.toLowerCase().replace(/[^\w]/g, '') === query
+        );
+        
+        if (queryIndex !== -1) {
+          // Higher score for query appearing earlier in the sentence
+          const positionScore = Math.max(0.3, 1 - (queryIndex / words.length));
+          return 0.88 * positionScore;
+        }
+      }
+    }
     
-    // Word boundary match
+    // Enhanced word boundary matching
     const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
-    if (wordBoundaryRegex.test(english)) score += 3;
+    if (wordBoundaryRegex.test(english)) {
+      const position = english.search(wordBoundaryRegex);
+      const positionScore = position === 0 ? 1.0 : Math.max(0.5, 1 - (position / english.length));
+      return 0.8 * positionScore;
+    }
     
-    // Contains query
-    if (english.includes(query)) score += 1;
+    // Prefix matching
+    if (english.startsWith(query)) {
+      const ratio = query.length / english.length;
+      return 0.75 * Math.min(1, ratio + 0.2);
+    }
     
-    // Completeness bonus
-    score += this.calculateCompletenessScore(entry) * 0.1;
+    // Contains matching
+    if (english.includes(query)) {
+      const position = english.indexOf(query);
+      const lengthRatio = query.length / english.length;
+      const positionPenalty = position / english.length;
+      return 0.6 * lengthRatio * (1 - positionPenalty * 0.5);
+    }
     
-    // Length penalty for very long entries (prefer concise matches)
-    if (english.length > query.length * 3) score -= 0.5;
+    // Reverse matching (query contains english)
+    if (query.includes(english) && english.length > 2) {
+      const lengthRatio = english.length / query.length;
+      return 0.5 * lengthRatio;
+    }
     
-    return score;
+    return 0;
+  }
+
+  /**
+   * Group matches by English word to identify disambiguation candidates
+   */
+  private groupMatchesByEnglishWord(matches: Array<DictionaryEntry & { confidence: number }>, query: string): DictionaryEntry[] {
+    // Find all entries that have the exact same English word as the query
+    const exactWordMatches = matches.filter(match => 
+      match.english.toLowerCase().trim() === query
+    );
+    
+    if (exactWordMatches.length > 1) {
+      console.log(`🔀 Found ${exactWordMatches.length} entries with exact English word "${query}"`);
+      return exactWordMatches.map(match => {
+        const { confidence, ...entry } = match;
+        return entry;
+      });
+    }
+    
+    return [];
   }
 
   private escapeRegex(string: string): string {
@@ -576,74 +647,23 @@ class DictionaryService {
     const normalizedQuery = String(query).toLowerCase().trim();
     if (!normalizedQuery) return [];
     
-    console.log(`🔍 Performing fuzzy search for: "${normalizedQuery}"`);
+    console.log(`🔍 Enhanced fuzzy search for: "${normalizedQuery}"`);
     
-    const results: SearchResult[] = [];
-
-    this.dictionary.forEach(entry => {
-      if (!entry.english || typeof entry.english !== 'string') return;
-      
-      const englishLower = String(entry.english).toLowerCase();
-      let confidence = 0;
-
-      // Enhanced confidence calculation with detailed logging
-      if (englishLower === normalizedQuery) {
-        confidence = 1.0;
-        console.log(`🎯 Exact match: ${entry.english} (confidence: 1.0)`);
-      } else if (englishLower.startsWith(normalizedQuery)) {
-        confidence = 0.9;
-        console.log(`🔸 Starts with: ${entry.english} (confidence: 0.9)`);
-      } else if (englishLower.includes(normalizedQuery)) {
-        confidence = 0.7;
-        console.log(`🔹 Contains: ${entry.english} (confidence: 0.7)`);
-      } else if (normalizedQuery.includes(englishLower)) {
-        confidence = 0.6;
-        console.log(`🔸 Query contains word: ${entry.english} (confidence: 0.6)`);
-      } else {
-        // Enhanced word boundary matching
-        const queryWords = normalizedQuery.split(/\s+/);
-        const entryWords = englishLower.split(/\s+/);
-        
-        let wordMatches = 0;
-        let totalPossibleMatches = Math.max(queryWords.length, entryWords.length);
-        
-        queryWords.forEach(qWord => {
-          entryWords.forEach(eWord => {
-            if (qWord === eWord) {
-              wordMatches += 1.0; // Exact word match
-            } else if (qWord.includes(eWord) || eWord.includes(qWord)) {
-              wordMatches += 0.5; // Partial word match
-            }
-          });
-        });
-        
-        if (wordMatches > 0) {
-          confidence = (wordMatches / totalPossibleMatches) * 0.5;
-          console.log(`🔹 Word match: ${entry.english} (matches: ${wordMatches}/${totalPossibleMatches}, confidence: ${confidence.toFixed(2)})`);
-        }
-      }
-
-      // Apply completeness bonus
-      if (confidence > 0) {
-        const completenessBonus = this.calculateCompletenessScore(entry) * 0.02; // Small bonus for complete entries
-        confidence = Math.min(1.0, confidence + completenessBonus);
-        
-        results.push({
-          entry,
-          confidence,
-          source: 'dictionary'
-        });
-      }
+    const allMatches = this.findAllSmartMatches(normalizedQuery);
+    
+    const results: SearchResult[] = allMatches.slice(0, limit).map(match => {
+      const { confidence, ...entry } = match;
+      return {
+        entry,
+        confidence,
+        source: 'dictionary'
+      };
     });
 
-    const sortedResults = results
-      .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, limit);
+    console.log(`📊 Enhanced fuzzy search results (top ${Math.min(limit, results.length)}):`, 
+      results.map(r => `${r.entry.english} -> ${r.entry.ibibio} (${(r.confidence * 100).toFixed(1)}%)`));
 
-    console.log(`📊 Fuzzy search results (top ${Math.min(limit, sortedResults.length)}):`, 
-      sortedResults.map(r => `${r.entry.english} -> ${r.entry.ibibio} (${(r.confidence * 100).toFixed(1)}%)`));
-
-    return sortedResults;
+    return results;
   }
 
   getAllEntries(): DictionaryEntry[] {
@@ -662,7 +682,8 @@ class DictionaryService {
       loadingStats: this.loadingStats,
       entriesWithExamples: this.dictionary.filter(e => e.examples && e.examples.length > 0).length,
       entriesWithCultural: this.dictionary.filter(e => e.cultural && e.cultural.length > 0).length,
-      entriesWithPronunciation: this.dictionary.filter(e => e.pronunciation && e.pronunciation.length > 0).length
+      entriesWithPronunciation: this.dictionary.filter(e => e.pronunciation && e.pronunciation.length > 0).length,
+      disambiguationStats: disambiguationService.getStats()
     };
   }
 
@@ -684,7 +705,13 @@ class DictionaryService {
       
       // Test general search
       const generalResult = this.search(searchTerm);
-      console.log('🔍 General search result:', generalResult);
+      console.log('🔍 Enhanced smart search result:', generalResult);
+      
+      // Test disambiguation
+      if (disambiguationService.hasDisambiguationRule(searchTerm)) {
+        console.log('🔀 Disambiguation rule available:', disambiguationService.getDisambiguationRule(searchTerm));
+      }
+      
     } else {
       console.log('📝 Sample entries by category:');
       const categories = [...new Set(this.dictionary.map(e => e.category).filter(Boolean))];

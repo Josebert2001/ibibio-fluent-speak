@@ -5,8 +5,10 @@ interface SemanticScore {
   positionScore: number;
   contextScore: number;
   definitionScore: number;
-  completenessScore: number; // New: Score based on entry completeness
-  categoryRelevanceScore: number; // New: Score based on category relevance
+  completenessScore: number;
+  categoryRelevanceScore: number;
+  firstMentionBonus: number; // New: Bonus for first mention in comma-separated lists
+  exactWordBonus: number; // New: Bonus for exact word matches in sentences
   totalScore: number;
 }
 
@@ -32,17 +34,17 @@ class SemanticAnalyzer {
   };
 
   /**
-   * Enhanced analyze method with comprehensive scoring
+   * Enhanced analyze method with smart word detection in sentences and lists
    */
   analyzeMatch(query: string, entry: DictionaryEntry): SemanticScore {
     const normalizedQuery = query.toLowerCase().trim();
     const normalizedEnglish = entry.english?.toLowerCase().trim() || '';
     const normalizedMeaning = entry.meaning?.toLowerCase().trim() || '';
 
-    console.log(`🔍 Analyzing match: "${query}" vs "${entry.english}"`);
+    console.log(`🔍 Enhanced analysis: "${query}" vs "${entry.english}"`);
 
-    // 1. Enhanced Primary Match Analysis
-    const primaryMatch = this.calculateEnhancedPrimaryMatch(normalizedQuery, normalizedEnglish);
+    // 1. Enhanced Primary Match Analysis with smart word detection
+    const primaryMatch = this.calculateSmartPrimaryMatch(normalizedQuery, normalizedEnglish);
 
     // 2. Enhanced Position Score
     const positionScore = this.calculateEnhancedPositionScore(normalizedQuery, normalizedMeaning);
@@ -53,20 +55,28 @@ class SemanticAnalyzer {
     // 4. Enhanced Definition Structure Score
     const definitionScore = this.calculateEnhancedDefinitionScore(normalizedQuery, normalizedMeaning);
 
-    // 5. New: Completeness Score
+    // 5. Completeness Score
     const completenessScore = this.calculateCompletenessScore(entry);
 
-    // 6. New: Category Relevance Score
+    // 6. Category Relevance Score
     const categoryRelevanceScore = this.calculateCategoryRelevanceScore(normalizedQuery, entry);
 
+    // 7. NEW: First Mention Bonus for comma-separated lists
+    const firstMentionBonus = this.calculateFirstMentionBonus(normalizedQuery, normalizedEnglish);
+
+    // 8. NEW: Exact Word Bonus for word boundaries in sentences
+    const exactWordBonus = this.calculateExactWordBonus(normalizedQuery, normalizedEnglish);
+
     // Calculate enhanced weighted total score
-    const totalScore = this.calculateWeightedScore({
+    const totalScore = this.calculateEnhancedWeightedScore({
       primaryMatch,
       positionScore,
       contextScore,
       definitionScore,
       completenessScore,
-      categoryRelevanceScore
+      categoryRelevanceScore,
+      firstMentionBonus,
+      exactWordBonus
     });
 
     const result = {
@@ -76,29 +86,50 @@ class SemanticAnalyzer {
       definitionScore,
       completenessScore,
       categoryRelevanceScore,
+      firstMentionBonus,
+      exactWordBonus,
       totalScore
     };
 
-    console.log(`📊 Semantic scores for "${entry.english}":`, {
+    console.log(`📊 Enhanced semantic scores for "${entry.english}":`, {
       primary: primaryMatch.toFixed(3),
       position: positionScore.toFixed(3),
       context: contextScore.toFixed(3),
       definition: definitionScore.toFixed(3),
       completeness: completenessScore.toFixed(3),
       category: categoryRelevanceScore.toFixed(3),
+      firstMention: firstMentionBonus.toFixed(3),
+      exactWord: exactWordBonus.toFixed(3),
       total: totalScore.toFixed(3)
     });
 
     return result;
   }
 
-  private calculateEnhancedPrimaryMatch(query: string, english: string): number {
+  /**
+   * NEW: Smart primary match that detects words in sentences and comma-separated lists
+   */
+  private calculateSmartPrimaryMatch(query: string, english: string): number {
     if (!query || !english) return 0;
 
     // Exact match (highest score)
     if (english === query) {
       console.log(`🎯 Exact match found: "${english}"`);
       return 1.0;
+    }
+
+    // NEW: Smart word detection in comma-separated lists
+    const commaSeparatedScore = this.analyzeCommaSeparatedList(query, english);
+    if (commaSeparatedScore > 0) {
+      console.log(`📝 Found in comma-separated list: score ${commaSeparatedScore.toFixed(3)}`);
+      return commaSeparatedScore;
+    }
+
+    // NEW: Smart word detection in sentences
+    const sentenceWordScore = this.analyzeSentenceWordMatch(query, english);
+    if (sentenceWordScore > 0) {
+      console.log(`📖 Found as word in sentence: score ${sentenceWordScore.toFixed(3)}`);
+      return sentenceWordScore;
     }
 
     // Enhanced word boundary analysis
@@ -153,17 +184,179 @@ class SemanticAnalyzer {
       return score;
     }
 
-    // Enhanced reverse matching (query contains english)
-    if (query.includes(english) && english.length > 2) {
-      const lengthRatio = english.length / query.length;
-      const score = 0.5 * lengthRatio;
-      console.log(`🔹 Reverse match: "${english}" in "${query}", score ${score.toFixed(2)}`);
-      return score;
-    }
-
     return 0;
   }
 
+  /**
+   * NEW: Analyze comma-separated lists to find the query word
+   */
+  private analyzeCommaSeparatedList(query: string, english: string): number {
+    // Check if the english field contains commas (indicating a list)
+    if (!english.includes(',')) return 0;
+
+    const items = english.split(',').map(item => item.trim());
+    
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      
+      // Exact match in list item
+      if (item === query) {
+        // Higher score for earlier positions in the list
+        const positionBonus = Math.max(0.1, 1 - (i * 0.1));
+        console.log(`🎯 Exact match in comma list at position ${i + 1}: "${item}"`);
+        return 0.98 * positionBonus;
+      }
+      
+      // Word boundary match in list item
+      const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+      if (wordBoundaryRegex.test(item)) {
+        const positionBonus = Math.max(0.1, 1 - (i * 0.1));
+        console.log(`🔸 Word boundary match in comma list at position ${i + 1}: "${item}"`);
+        return 0.92 * positionBonus;
+      }
+      
+      // Starts with query in list item
+      if (item.startsWith(query)) {
+        const positionBonus = Math.max(0.1, 1 - (i * 0.1));
+        console.log(`🔹 Starts with match in comma list at position ${i + 1}: "${item}"`);
+        return 0.85 * positionBonus;
+      }
+    }
+    
+    return 0;
+  }
+
+  /**
+   * NEW: Analyze sentence word matches with context awareness
+   */
+  private analyzeSentenceWordMatch(query: string, english: string): number {
+    // Skip if it's clearly a list (contains commas)
+    if (english.includes(',')) return 0;
+    
+    // Check for word boundary match in sentence
+    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+    if (!wordBoundaryRegex.test(english)) return 0;
+    
+    const words = english.split(/\s+/);
+    const queryIndex = words.findIndex(word => 
+      word.toLowerCase().replace(/[^\w]/g, '') === query
+    );
+    
+    if (queryIndex === -1) return 0;
+    
+    // Higher score for query appearing earlier in the sentence
+    const positionScore = Math.max(0.3, 1 - (queryIndex / words.length));
+    
+    // Bonus for being the main verb or noun (simple heuristic)
+    let contextBonus = 1.0;
+    
+    // Check if it's preceded by "to" (likely a verb)
+    if (queryIndex > 0 && words[queryIndex - 1].toLowerCase() === 'to') {
+      contextBonus = 1.1;
+      console.log(`🔸 Found after "to": likely main verb`);
+    }
+    
+    // Check if it's the first significant word
+    if (queryIndex === 0 || (queryIndex === 1 && words[0].toLowerCase() === 'to')) {
+      contextBonus = 1.15;
+      console.log(`🔸 Found as first significant word`);
+    }
+    
+    const finalScore = 0.88 * positionScore * contextBonus;
+    console.log(`📖 Sentence word match: position ${queryIndex + 1}/${words.length}, score ${finalScore.toFixed(3)}`);
+    
+    return finalScore;
+  }
+
+  /**
+   * NEW: Calculate bonus for first mention in comma-separated lists
+   */
+  private calculateFirstMentionBonus(query: string, english: string): number {
+    if (!english.includes(',')) return 0;
+    
+    const items = english.split(',').map(item => item.trim());
+    const firstItem = items[0];
+    
+    // Check if query appears in the first item
+    if (firstItem === query) {
+      console.log(`🥇 Query is the first item in comma list`);
+      return 0.2;
+    }
+    
+    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+    if (wordBoundaryRegex.test(firstItem)) {
+      console.log(`🥇 Query found in first item of comma list: "${firstItem}"`);
+      return 0.15;
+    }
+    
+    return 0;
+  }
+
+  /**
+   * NEW: Calculate bonus for exact word boundaries in sentences
+   */
+  private calculateExactWordBonus(query: string, english: string): number {
+    // Skip lists
+    if (english.includes(',')) return 0;
+    
+    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+    if (!wordBoundaryRegex.test(english)) return 0;
+    
+    const words = english.split(/\s+/);
+    const totalWords = words.length;
+    
+    // Bonus based on sentence length (shorter sentences get higher bonus)
+    if (totalWords <= 3) {
+      console.log(`🎯 Exact word in short sentence (${totalWords} words)`);
+      return 0.15;
+    } else if (totalWords <= 5) {
+      console.log(`🎯 Exact word in medium sentence (${totalWords} words)`);
+      return 0.1;
+    } else {
+      console.log(`🎯 Exact word in long sentence (${totalWords} words)`);
+      return 0.05;
+    }
+  }
+
+  /**
+   * Enhanced weighted score calculation with new factors
+   */
+  private calculateEnhancedWeightedScore(scores: {
+    primaryMatch: number;
+    positionScore: number;
+    contextScore: number;
+    definitionScore: number;
+    completenessScore: number;
+    categoryRelevanceScore: number;
+    firstMentionBonus: number;
+    exactWordBonus: number;
+  }): number {
+    // Enhanced weighting system with new factors
+    const weights = {
+      primaryMatch: 0.40,           // Increased weight for primary match
+      contextScore: 0.20,           // Context importance
+      positionScore: 0.15,          // Position in definition
+      definitionScore: 0.08,        // Definition structure
+      firstMentionBonus: 0.07,      // NEW: First mention bonus
+      exactWordBonus: 0.05,         // NEW: Exact word bonus
+      completenessScore: 0.03,      // Entry completeness
+      categoryRelevanceScore: 0.02  // Category relevance
+    };
+    
+    const weightedScore = 
+      scores.primaryMatch * weights.primaryMatch +
+      scores.positionScore * weights.positionScore +
+      scores.contextScore * weights.contextScore +
+      scores.definitionScore * weights.definitionScore +
+      scores.completenessScore * weights.completenessScore +
+      scores.categoryRelevanceScore * weights.categoryRelevanceScore +
+      scores.firstMentionBonus * weights.firstMentionBonus +
+      scores.exactWordBonus * weights.exactWordBonus;
+    
+    return Math.min(1.0, weightedScore);
+  }
+
+  // Keep all existing methods unchanged
   private calculateEnhancedPositionScore(query: string, meaning: string): number {
     if (!query || !meaning) return 0;
 
@@ -420,35 +613,6 @@ class SemanticAnalyzer {
     return 0.5; // Neutral score if no category match
   }
 
-  private calculateWeightedScore(scores: {
-    primaryMatch: number;
-    positionScore: number;
-    contextScore: number;
-    definitionScore: number;
-    completenessScore: number;
-    categoryRelevanceScore: number;
-  }): number {
-    // Enhanced weighting system
-    const weights = {
-      primaryMatch: 0.35,        // Increased weight for primary match
-      contextScore: 0.25,        // High weight for context
-      positionScore: 0.20,       // Position in definition
-      definitionScore: 0.10,     // Definition structure
-      completenessScore: 0.07,   // Entry completeness
-      categoryRelevanceScore: 0.03 // Category relevance
-    };
-    
-    const weightedScore = 
-      scores.primaryMatch * weights.primaryMatch +
-      scores.positionScore * weights.positionScore +
-      scores.contextScore * weights.contextScore +
-      scores.definitionScore * weights.definitionScore +
-      scores.completenessScore * weights.completenessScore +
-      scores.categoryRelevanceScore * weights.categoryRelevanceScore;
-    
-    return Math.min(1.0, weightedScore);
-  }
-
   /**
    * Enhanced escape method for regex
    */
@@ -464,19 +628,21 @@ class SemanticAnalyzer {
     const analysis = this.getDetailedAnalysis(query, entry, score);
     
     return `
-=== SEMANTIC ANALYSIS DEBUG ===
+=== ENHANCED SEMANTIC ANALYSIS DEBUG ===
 Query: "${query}"
 Entry: ${entry.english} → ${entry.ibibio}
 Meaning: ${entry.meaning}
 Category: ${entry.category || 'none'}
 
-SCORES:
-  Primary Match: ${score.primaryMatch.toFixed(3)} (${(score.primaryMatch * 35).toFixed(1)}% of total)
-  Position Score: ${score.positionScore.toFixed(3)} (${(score.positionScore * 20).toFixed(1)}% of total)
-  Context Score: ${score.contextScore.toFixed(3)} (${(score.contextScore * 25).toFixed(1)}% of total)
-  Definition Score: ${score.definitionScore.toFixed(3)} (${(score.definitionScore * 10).toFixed(1)}% of total)
-  Completeness Score: ${score.completenessScore.toFixed(3)} (${(score.completenessScore * 7).toFixed(1)}% of total)
-  Category Relevance: ${score.categoryRelevanceScore.toFixed(3)} (${(score.categoryRelevanceScore * 3).toFixed(1)}% of total)
+ENHANCED SCORES:
+  Primary Match: ${score.primaryMatch.toFixed(3)} (${(score.primaryMatch * 40).toFixed(1)}% of total)
+  Position Score: ${score.positionScore.toFixed(3)} (${(score.positionScore * 15).toFixed(1)}% of total)
+  Context Score: ${score.contextScore.toFixed(3)} (${(score.contextScore * 20).toFixed(1)}% of total)
+  Definition Score: ${score.definitionScore.toFixed(3)} (${(score.definitionScore * 8).toFixed(1)}% of total)
+  First Mention Bonus: ${score.firstMentionBonus.toFixed(3)} (${(score.firstMentionBonus * 7).toFixed(1)}% of total)
+  Exact Word Bonus: ${score.exactWordBonus.toFixed(3)} (${(score.exactWordBonus * 5).toFixed(1)}% of total)
+  Completeness Score: ${score.completenessScore.toFixed(3)} (${(score.completenessScore * 3).toFixed(1)}% of total)
+  Category Relevance: ${score.categoryRelevanceScore.toFixed(3)} (${(score.categoryRelevanceScore * 2).toFixed(1)}% of total)
   
 TOTAL SCORE: ${score.totalScore.toFixed(3)} (${(score.totalScore * 100).toFixed(1)}%)
 
@@ -527,6 +693,15 @@ ${analysis.flags.length > 0 ? `FLAGS:\n${analysis.flags.map(f => `  ⚠️ ${f}`
       flags.push('NO_PRIMARY_MATCH');
     }
     
+    // Analyze new bonuses
+    if (score.firstMentionBonus > 0) {
+      reasoning.push('First mention bonus applied - found early in comma-separated list');
+    }
+    
+    if (score.exactWordBonus > 0) {
+      reasoning.push('Exact word bonus applied - found as complete word in sentence');
+    }
+    
     // Analyze context
     if (score.contextScore >= 0.8) {
       reasoning.push('Excellent context match - appears to be direct translation');
@@ -561,7 +736,7 @@ ${analysis.flags.length > 0 ? `FLAGS:\n${analysis.flags.map(f => `  ⚠️ ${f}`
     score: SemanticScore;
     rank: number;
   }> {
-    console.log(`🔍 Batch analyzing ${entries.length} entries for query: "${query}"`);
+    console.log(`🔍 Enhanced batch analyzing ${entries.length} entries for query: "${query}"`);
     
     const results = entries.map(entry => ({
       entry,
@@ -575,7 +750,7 @@ ${analysis.flags.length > 0 ? `FLAGS:\n${analysis.flags.map(f => `  ⚠️ ${f}`
       result.rank = index + 1;
     });
     
-    console.log(`📊 Batch analysis complete. Top 3 results:`);
+    console.log(`📊 Enhanced batch analysis complete. Top 3 results:`);
     results.slice(0, 3).forEach(result => {
       console.log(`  ${result.rank}. ${result.entry.english} -> ${result.entry.ibibio} (${(result.score.totalScore * 100).toFixed(1)}%)`);
     });
