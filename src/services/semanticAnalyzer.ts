@@ -5,266 +5,584 @@ interface SemanticScore {
   positionScore: number;
   contextScore: number;
   definitionScore: number;
+  completenessScore: number; // New: Score based on entry completeness
+  categoryRelevanceScore: number; // New: Score based on category relevance
   totalScore: number;
 }
 
+interface AnalysisDetails {
+  matchType: string;
+  confidence: string;
+  reasoning: string[];
+  flags: string[];
+}
+
 class SemanticAnalyzer {
+  private categoryKeywords = {
+    'greeting': ['hello', 'hi', 'welcome', 'goodbye', 'bye', 'greet', 'salute'],
+    'family': ['family', 'mother', 'father', 'parent', 'child', 'son', 'daughter', 'brother', 'sister', 'relative'],
+    'food': ['food', 'eat', 'drink', 'meal', 'hungry', 'thirsty', 'cook', 'taste', 'delicious'],
+    'emotion': ['love', 'hate', 'happy', 'sad', 'angry', 'joy', 'fear', 'feel', 'emotion', 'mood'],
+    'action': ['go', 'come', 'walk', 'run', 'stop', 'start', 'move', 'sit', 'stand', 'work', 'play'],
+    'description': ['big', 'small', 'good', 'bad', 'beautiful', 'ugly', 'hot', 'cold', 'fast', 'slow'],
+    'nature': ['water', 'tree', 'flower', 'animal', 'bird', 'sun', 'moon', 'rain', 'wind', 'earth'],
+    'spiritual': ['god', 'pray', 'church', 'spirit', 'soul', 'blessing', 'worship', 'faith', 'sacred'],
+    'time': ['time', 'day', 'night', 'morning', 'afternoon', 'evening', 'week', 'month', 'year'],
+    'body': ['body', 'head', 'eye', 'hand', 'foot', 'heart', 'face', 'hair', 'skin', 'blood']
+  };
+
   /**
-   * Analyze how well a search query matches a dictionary entry
+   * Enhanced analyze method with comprehensive scoring
    */
   analyzeMatch(query: string, entry: DictionaryEntry): SemanticScore {
     const normalizedQuery = query.toLowerCase().trim();
     const normalizedEnglish = entry.english?.toLowerCase().trim() || '';
     const normalizedMeaning = entry.meaning?.toLowerCase().trim() || '';
 
-    // 1. Primary Match Analysis - exact match with the english field
-    const primaryMatch = this.calculatePrimaryMatch(normalizedQuery, normalizedEnglish);
+    console.log(`🔍 Analyzing match: "${query}" vs "${entry.english}"`);
 
-    // 2. Position Score - where does the query appear in the meaning/definition
-    const positionScore = this.calculatePositionScore(normalizedQuery, normalizedMeaning);
+    // 1. Enhanced Primary Match Analysis
+    const primaryMatch = this.calculateEnhancedPrimaryMatch(normalizedQuery, normalizedEnglish);
 
-    // 3. Context Score - is this a direct translation or contextual usage
-    const contextScore = this.calculateContextScore(normalizedQuery, normalizedMeaning, normalizedEnglish);
+    // 2. Enhanced Position Score
+    const positionScore = this.calculateEnhancedPositionScore(normalizedQuery, normalizedMeaning);
 
-    // 4. Definition Structure Score - analyze the structure of the definition
-    const definitionScore = this.calculateDefinitionScore(normalizedQuery, normalizedMeaning);
+    // 3. Enhanced Context Score
+    const contextScore = this.calculateEnhancedContextScore(normalizedQuery, normalizedMeaning, normalizedEnglish);
 
-    // Calculate weighted total score
-    const totalScore = (
-      primaryMatch * 0.4 +      // 40% weight for exact english match
-      positionScore * 0.25 +    // 25% weight for position in definition
-      contextScore * 0.20 +     // 20% weight for context analysis
-      definitionScore * 0.15    // 15% weight for definition structure
-    );
+    // 4. Enhanced Definition Structure Score
+    const definitionScore = this.calculateEnhancedDefinitionScore(normalizedQuery, normalizedMeaning);
 
-    return {
+    // 5. New: Completeness Score
+    const completenessScore = this.calculateCompletenessScore(entry);
+
+    // 6. New: Category Relevance Score
+    const categoryRelevanceScore = this.calculateCategoryRelevanceScore(normalizedQuery, entry);
+
+    // Calculate enhanced weighted total score
+    const totalScore = this.calculateWeightedScore({
       primaryMatch,
       positionScore,
       contextScore,
       definitionScore,
+      completenessScore,
+      categoryRelevanceScore
+    });
+
+    const result = {
+      primaryMatch,
+      positionScore,
+      contextScore,
+      definitionScore,
+      completenessScore,
+      categoryRelevanceScore,
       totalScore
     };
+
+    console.log(`📊 Semantic scores for "${entry.english}":`, {
+      primary: primaryMatch.toFixed(3),
+      position: positionScore.toFixed(3),
+      context: contextScore.toFixed(3),
+      definition: definitionScore.toFixed(3),
+      completeness: completenessScore.toFixed(3),
+      category: categoryRelevanceScore.toFixed(3),
+      total: totalScore.toFixed(3)
+    });
+
+    return result;
   }
 
-  private calculatePrimaryMatch(query: string, english: string): number {
+  private calculateEnhancedPrimaryMatch(query: string, english: string): number {
     if (!query || !english) return 0;
 
-    // Exact match
-    if (english === query) return 1.0;
+    // Exact match (highest score)
+    if (english === query) {
+      console.log(`🎯 Exact match found: "${english}"`);
+      return 1.0;
+    }
 
-    // Word boundary exact match
+    // Enhanced word boundary analysis
     const queryWords = query.split(/\s+/);
     const englishWords = english.split(/\s+/);
 
-    // If query is a single word and appears as a complete word in english
+    // Single word query matching multi-word entry
     if (queryWords.length === 1 && englishWords.includes(query)) {
+      console.log(`🔸 Single word found in multi-word entry: "${query}" in "${english}"`);
       return 0.95;
     }
 
-    // Starts with query followed by word boundary
-    const startsWithPattern = new RegExp(`^${this.escapeRegex(query)}\\b`, 'i');
-    if (startsWithPattern.test(english)) return 0.9;
-
-    // Contains query as word boundary at start of phrase
-    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
-    if (wordBoundaryRegex.test(english)) {
-      // Higher score if at the beginning
-      if (english.toLowerCase().startsWith(query.toLowerCase())) {
-        return 0.85;
+    // Multi-word query analysis
+    if (queryWords.length > 1) {
+      const matchingWords = queryWords.filter(qWord => 
+        englishWords.some(eWord => eWord === qWord || eWord.includes(qWord) || qWord.includes(eWord))
+      );
+      
+      if (matchingWords.length === queryWords.length) {
+        console.log(`🔸 All query words found: ${matchingWords.length}/${queryWords.length}`);
+        return 0.9;
+      } else if (matchingWords.length > 0) {
+        const ratio = matchingWords.length / queryWords.length;
+        console.log(`🔹 Partial word match: ${matchingWords.length}/${queryWords.length} (${(ratio * 100).toFixed(1)}%)`);
+        return 0.7 * ratio;
       }
-      return 0.7;
     }
 
-    // Contains query
-    if (english.includes(query)) return 0.4;
+    // Enhanced prefix matching
+    if (english.startsWith(query)) {
+      const ratio = query.length / english.length;
+      console.log(`🔸 Prefix match: "${query}" starts "${english}" (ratio: ${ratio.toFixed(2)})`);
+      return 0.85 * Math.min(1, ratio + 0.2);
+    }
+
+    // Enhanced word boundary matching
+    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+    if (wordBoundaryRegex.test(english)) {
+      const position = english.search(wordBoundaryRegex);
+      const positionScore = position === 0 ? 1.0 : Math.max(0.5, 1 - (position / english.length));
+      console.log(`🔹 Word boundary match at position ${position}: score ${positionScore.toFixed(2)}`);
+      return 0.8 * positionScore;
+    }
+
+    // Enhanced substring matching
+    if (english.includes(query)) {
+      const position = english.indexOf(query);
+      const lengthRatio = query.length / english.length;
+      const positionPenalty = position / english.length;
+      const score = 0.6 * lengthRatio * (1 - positionPenalty * 0.5);
+      console.log(`🔹 Substring match: position ${position}, length ratio ${lengthRatio.toFixed(2)}, score ${score.toFixed(2)}`);
+      return score;
+    }
+
+    // Enhanced reverse matching (query contains english)
+    if (query.includes(english) && english.length > 2) {
+      const lengthRatio = english.length / query.length;
+      const score = 0.5 * lengthRatio;
+      console.log(`🔹 Reverse match: "${english}" in "${query}", score ${score.toFixed(2)}`);
+      return score;
+    }
 
     return 0;
   }
 
-  private calculatePositionScore(query: string, meaning: string): number {
+  private calculateEnhancedPositionScore(query: string, meaning: string): number {
     if (!query || !meaning) return 0;
 
-    // Clean the meaning text
     const cleanMeaning = meaning.replace(/[()[\]]/g, '').trim();
     
-    // Split by common separators to find primary vs secondary meanings
-    const segments = cleanMeaning.split(/[;,]/).map(s => s.trim());
+    // Enhanced segment analysis
+    const segments = cleanMeaning.split(/[;,.]/).map(s => s.trim()).filter(s => s.length > 0);
     
     for (let i = 0; i < segments.length; i++) {
       const segment = segments[i];
-      const position = segment.toLowerCase().indexOf(query.toLowerCase());
+      const segmentLower = segment.toLowerCase();
       
-      if (position !== -1) {
-        // Found in this segment
-        const segmentWeight = 1.0 - (i * 0.2); // First segment gets full weight, later segments get less
+      // Check for various match types in this segment
+      const matchTypes = this.analyzeSegmentMatch(query, segmentLower);
+      
+      if (matchTypes.score > 0) {
+        const segmentWeight = Math.max(0.2, 1.0 - (i * 0.15)); // Gradual decrease for later segments
+        const finalScore = matchTypes.score * segmentWeight;
         
-        // Position within the segment
-        const segmentLength = segment.length;
-        const positionWeight = position === 0 ? 1.0 : 
-                              position < segmentLength * 0.25 ? 0.8 :
-                              position < segmentLength * 0.5 ? 0.6 : 0.4;
-        
-        return Math.max(0.2, segmentWeight * positionWeight);
+        console.log(`📍 Position match in segment ${i + 1}: "${segment.substring(0, 50)}..." (${matchTypes.type}, score: ${finalScore.toFixed(3)})`);
+        return finalScore;
       }
     }
 
     return 0;
   }
 
-  private calculateContextScore(query: string, meaning: string, english: string): number {
+  private analyzeSegmentMatch(query: string, segment: string): { score: number; type: string } {
+    // Exact match at start
+    if (segment.startsWith(query)) {
+      return { score: 1.0, type: 'starts_with' };
+    }
+
+    // "To [query]" pattern
+    if (segment.startsWith(`to ${query}`)) {
+      return { score: 1.0, type: 'to_verb' };
+    }
+
+    // Word boundary match
+    const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(query)}\\b`, 'i');
+    if (wordBoundaryRegex.test(segment)) {
+      const position = segment.search(wordBoundaryRegex);
+      const positionScore = position < 10 ? 0.9 : position < 20 ? 0.7 : 0.5;
+      return { score: positionScore, type: 'word_boundary' };
+    }
+
+    // Contains match
+    if (segment.includes(query)) {
+      const position = segment.indexOf(query);
+      const lengthRatio = query.length / segment.length;
+      const positionPenalty = position / segment.length;
+      const score = Math.max(0.3, 0.6 * lengthRatio * (1 - positionPenalty));
+      return { score, type: 'contains' };
+    }
+
+    return { score: 0, type: 'no_match' };
+  }
+
+  private calculateEnhancedContextScore(query: string, meaning: string, english: string): number {
     if (!query || !meaning) return 0;
 
     const meaningLower = meaning.toLowerCase();
     const queryLower = query.toLowerCase();
 
-    // First check if it starts with query (highest priority for direct translations)
-    if (meaningLower.startsWith(queryLower + ',') || 
-        meaningLower.startsWith(queryLower + ';') ||
-        meaningLower.startsWith(queryLower + ' ') ||
-        meaningLower === queryLower) {
-      return 1.0;
-    }
-
-    // Check for "to [query]" pattern at the start
-    if (meaningLower.startsWith(`to ${queryLower}`)) {
-      return 1.0;
-    }
-
-    // Check for direct translation indicators (but penalize if in compound phrases)
-    const directIndicators = [
-      `${queryLower},`,
-      `${queryLower};`,
-      `${queryLower}.`,
-      `, ${queryLower},`,
-      `, ${queryLower};`,
-      `, ${queryLower}.`
+    // Enhanced direct translation detection
+    const directTranslationPatterns = [
+      new RegExp(`^${this.escapeRegex(queryLower)}[,;.]`, 'i'),
+      new RegExp(`^${this.escapeRegex(queryLower)}\\s`, 'i'),
+      new RegExp(`^to\\s+${this.escapeRegex(queryLower)}[,;.]`, 'i'),
+      new RegExp(`^${this.escapeRegex(queryLower)}$`, 'i')
     ];
 
-    for (const indicator of directIndicators) {
-      if (meaningLower.includes(indicator)) {
-        // If it's at the very beginning, it's a primary translation
-        if (meaningLower.indexOf(indicator) === 0) {
-          return 1.0;
-        }
-        // If it's in a list but not compound, still good
-        return 0.9;
+    for (const pattern of directTranslationPatterns) {
+      if (pattern.test(meaningLower)) {
+        console.log(`🎯 Direct translation pattern matched: ${pattern.source}`);
+        return 1.0;
       }
     }
 
-    // Penalize compound/contextual usage heavily
+    // Enhanced compound/contextual usage detection (penalty)
     const contextualPatterns = [
-      `${queryLower} from`,
-      `${queryLower} something`,
-      `${queryLower} someone`,
-      `${queryLower} (something|someone|from)`,
-      `prevent.*${queryLower}`,
-      `make.*${queryLower}`,
-      `cause.*${queryLower}`,
-      `${queryLower}.*from happening`,
-      `to.*${queryLower}.*from`
+      new RegExp(`${this.escapeRegex(queryLower)}\\s+(from|something|someone|to|into|out|away)`, 'i'),
+      new RegExp(`(prevent|make|cause|force|help).*${this.escapeRegex(queryLower)}`, 'i'),
+      new RegExp(`${this.escapeRegex(queryLower)}.*from\\s+(happening|going|coming)`, 'i'),
+      new RegExp(`to.*${this.escapeRegex(queryLower)}.*from`, 'i'),
+      new RegExp(`${this.escapeRegex(queryLower)}\\s+(in|on|at|by|with)\\s+`, 'i')
     ];
 
     for (const pattern of contextualPatterns) {
-      const regex = new RegExp(pattern, 'i');
-      if (regex.test(meaningLower)) {
-        return 0.3; // Much lower score for contextual usage
+      if (pattern.test(meaningLower)) {
+        console.log(`⚠️ Contextual usage detected: ${pattern.source}`);
+        return 0.25; // Heavy penalty for contextual usage
       }
     }
 
-    // Word boundary check with position consideration
+    // Enhanced list detection
+    const listPatterns = [
+      new RegExp(`[,;]\\s*${this.escapeRegex(queryLower)}[,;.]`, 'i'),
+      new RegExp(`^[^,;]*,\\s*${this.escapeRegex(queryLower)}`, 'i')
+    ];
+
+    for (const pattern of listPatterns) {
+      if (pattern.test(meaningLower)) {
+        const position = meaningLower.search(pattern);
+        const score = position < 20 ? 0.8 : 0.6;
+        console.log(`📝 List item detected at position ${position}: score ${score}`);
+        return score;
+      }
+    }
+
+    // Enhanced word boundary with position weighting
     const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
     if (wordBoundaryRegex.test(meaningLower)) {
       const position = meaningLower.search(wordBoundaryRegex);
-      // Earlier position gets higher score
-      if (position < 10) return 0.8;
-      if (position < 20) return 0.7;
-      return 0.6;
+      let score = 0.6;
+      
+      if (position < 10) score = 0.8;
+      else if (position < 25) score = 0.7;
+      else if (position < 50) score = 0.6;
+      else score = 0.4;
+      
+      console.log(`🔹 Word boundary match at position ${position}: score ${score}`);
+      return score;
     }
 
     return 0.2;
   }
 
-  private calculateDefinitionScore(query: string, meaning: string): number {
+  private calculateEnhancedDefinitionScore(query: string, meaning: string): number {
     if (!query || !meaning) return 0;
 
     const meaningLower = meaning.toLowerCase();
     const queryLower = query.toLowerCase();
 
-    // Check if this appears to be a primary definition
-    // Primary definitions usually start with the word or "to [word]"
-    if (meaningLower.startsWith(queryLower + ',') || 
-        meaningLower.startsWith(queryLower + ';') || 
-        meaningLower.startsWith(queryLower + ' ') ||
-        meaningLower === queryLower) {
-      return 1.0;
-    }
+    // Enhanced primary definition detection
+    const primaryPatterns = [
+      new RegExp(`^${this.escapeRegex(queryLower)}[,;.]`, 'i'),
+      new RegExp(`^to\\s+${this.escapeRegex(queryLower)}[,;.]`, 'i'),
+      new RegExp(`^${this.escapeRegex(queryLower)}\\s+`, 'i'),
+      new RegExp(`^${this.escapeRegex(queryLower)}$`, 'i')
+    ];
 
-    if (meaningLower.startsWith(`to ${queryLower}`)) {
-      return 1.0;
-    }
-
-    // Parse the first segment more carefully
-    const firstSegment = meaningLower.split(/[;,]/)[0].trim();
-    
-    // Check if query is the main word in the first segment
-    if (firstSegment === queryLower || 
-        firstSegment === `to ${queryLower}` ||
-        firstSegment.startsWith(`${queryLower} `)) {
-      return 0.95;
-    }
-
-    // Check for definition structure patterns
-    if (meaningLower.match(/^(to\s+)?\w+[;,]/)) {
-      // This looks like a structured definition with primary meaning first
-      const firstPart = meaningLower.split(/[;,]/)[0];
-      if (firstPart.includes(queryLower)) {
-        // Check if it's a word boundary match
-        const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
-        if (wordBoundaryRegex.test(firstPart)) {
-          return 0.8;
-        }
-        return 0.6;
+    for (const pattern of primaryPatterns) {
+      if (pattern.test(meaningLower)) {
+        console.log(`🎯 Primary definition pattern: ${pattern.source}`);
+        return 1.0;
       }
     }
 
-    // Check for variant notations like "(var. word)"
-    const variantPattern = new RegExp(`\\(var\\.?\\s*${this.escapeRegex(queryLower)}\\)`, 'i');
-    if (variantPattern.test(meaning)) {
-      return 0.7;
+    // Enhanced structured definition analysis
+    const firstSegment = meaningLower.split(/[;,]/)[0].trim();
+    
+    if (firstSegment.length > 0) {
+      // Check if query is the main concept in first segment
+      if (firstSegment === queryLower || firstSegment === `to ${queryLower}`) {
+        console.log(`🎯 Main concept in first segment: "${firstSegment}"`);
+        return 0.95;
+      }
+      
+      if (firstSegment.startsWith(`${queryLower} `)) {
+        console.log(`🔸 Query starts first segment: "${firstSegment}"`);
+        return 0.9;
+      }
+      
+      // Word boundary in first segment
+      const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
+      if (wordBoundaryRegex.test(firstSegment)) {
+        console.log(`🔹 Word boundary in first segment: "${firstSegment}"`);
+        return 0.8;
+      }
     }
 
-    // Check if query appears anywhere with word boundaries
+    // Enhanced variant notation detection
+    const variantPatterns = [
+      new RegExp(`\\(var\\.?\\s*${this.escapeRegex(queryLower)}\\)`, 'i'),
+      new RegExp(`\\(also\\s+${this.escapeRegex(queryLower)}\\)`, 'i'),
+      new RegExp(`\\(see\\s+${this.escapeRegex(queryLower)}\\)`, 'i')
+    ];
+
+    for (const pattern of variantPatterns) {
+      if (pattern.test(meaning)) {
+        console.log(`🔄 Variant notation detected: ${pattern.source}`);
+        return 0.7;
+      }
+    }
+
+    // General word boundary match
     const wordBoundaryRegex = new RegExp(`\\b${this.escapeRegex(queryLower)}\\b`, 'i');
     if (wordBoundaryRegex.test(meaningLower)) {
+      console.log(`🔹 General word boundary match in definition`);
       return 0.4;
     }
 
     return 0.2;
   }
 
+  private calculateCompletenessScore(entry: DictionaryEntry): number {
+    let score = 0;
+    
+    // Base score for having required fields
+    if (entry.english && entry.ibibio && entry.meaning) {
+      score += 0.3;
+    }
+    
+    // Bonus for additional fields
+    if (entry.examples && entry.examples.length > 0) {
+      score += 0.25;
+      if (entry.examples.length > 1) score += 0.1;
+    }
+    
+    if (entry.cultural && entry.cultural.length > 10) {
+      score += 0.15;
+    }
+    
+    if (entry.pronunciation && entry.pronunciation.length > 0) {
+      score += 0.1;
+    }
+    
+    if (entry.partOfSpeech && entry.partOfSpeech !== 'unknown') {
+      score += 0.05;
+    }
+    
+    if (entry.category && entry.category !== 'general') {
+      score += 0.05;
+    }
+    
+    // Bonus for detailed meaning
+    if (entry.meaning && entry.meaning.length > 30) {
+      score += 0.1;
+    }
+    
+    return Math.min(1.0, score);
+  }
+
+  private calculateCategoryRelevanceScore(query: string, entry: DictionaryEntry): number {
+    if (!entry.category || entry.category === 'general') return 0.5;
+    
+    const queryLower = query.toLowerCase();
+    const categoryKeywords = this.categoryKeywords[entry.category as keyof typeof this.categoryKeywords];
+    
+    if (!categoryKeywords) return 0.5;
+    
+    // Check if query matches category keywords
+    const matchingKeywords = categoryKeywords.filter(keyword => 
+      queryLower.includes(keyword) || keyword.includes(queryLower)
+    );
+    
+    if (matchingKeywords.length > 0) {
+      const relevanceScore = 0.5 + (matchingKeywords.length / categoryKeywords.length) * 0.5;
+      console.log(`🏷️ Category relevance for "${entry.category}": ${relevanceScore.toFixed(2)} (matched: ${matchingKeywords.join(', ')})`);
+      return relevanceScore;
+    }
+    
+    return 0.5; // Neutral score if no category match
+  }
+
+  private calculateWeightedScore(scores: {
+    primaryMatch: number;
+    positionScore: number;
+    contextScore: number;
+    definitionScore: number;
+    completenessScore: number;
+    categoryRelevanceScore: number;
+  }): number {
+    // Enhanced weighting system
+    const weights = {
+      primaryMatch: 0.35,        // Increased weight for primary match
+      contextScore: 0.25,        // High weight for context
+      positionScore: 0.20,       // Position in definition
+      definitionScore: 0.10,     // Definition structure
+      completenessScore: 0.07,   // Entry completeness
+      categoryRelevanceScore: 0.03 // Category relevance
+    };
+    
+    const weightedScore = 
+      scores.primaryMatch * weights.primaryMatch +
+      scores.positionScore * weights.positionScore +
+      scores.contextScore * weights.contextScore +
+      scores.definitionScore * weights.definitionScore +
+      scores.completenessScore * weights.completenessScore +
+      scores.categoryRelevanceScore * weights.categoryRelevanceScore;
+    
+    return Math.min(1.0, weightedScore);
+  }
+
   /**
-   * Escape special regex characters
+   * Enhanced escape method for regex
    */
   private escapeRegex(string: string): string {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   /**
-   * Get debug information about the scoring
+   * Enhanced debug information with detailed analysis
    */
   getDebugInfo(query: string, entry: DictionaryEntry): string {
     const score = this.analyzeMatch(query, entry);
+    const analysis = this.getDetailedAnalysis(query, entry, score);
+    
     return `
-      Entry: ${entry.english} → ${entry.ibibio}
-      Meaning: ${entry.meaning}
-      Primary Match: ${score.primaryMatch.toFixed(2)}
-      Position Score: ${score.positionScore.toFixed(2)}
-      Context Score: ${score.contextScore.toFixed(2)}
-      Definition Score: ${score.definitionScore.toFixed(2)}
-      Total Score: ${score.totalScore.toFixed(2)}
+=== SEMANTIC ANALYSIS DEBUG ===
+Query: "${query}"
+Entry: ${entry.english} → ${entry.ibibio}
+Meaning: ${entry.meaning}
+Category: ${entry.category || 'none'}
+
+SCORES:
+  Primary Match: ${score.primaryMatch.toFixed(3)} (${(score.primaryMatch * 35).toFixed(1)}% of total)
+  Position Score: ${score.positionScore.toFixed(3)} (${(score.positionScore * 20).toFixed(1)}% of total)
+  Context Score: ${score.contextScore.toFixed(3)} (${(score.contextScore * 25).toFixed(1)}% of total)
+  Definition Score: ${score.definitionScore.toFixed(3)} (${(score.definitionScore * 10).toFixed(1)}% of total)
+  Completeness Score: ${score.completenessScore.toFixed(3)} (${(score.completenessScore * 7).toFixed(1)}% of total)
+  Category Relevance: ${score.categoryRelevanceScore.toFixed(3)} (${(score.categoryRelevanceScore * 3).toFixed(1)}% of total)
+  
+TOTAL SCORE: ${score.totalScore.toFixed(3)} (${(score.totalScore * 100).toFixed(1)}%)
+
+ANALYSIS:
+  Match Type: ${analysis.matchType}
+  Confidence: ${analysis.confidence}
+  
+REASONING:
+${analysis.reasoning.map(r => `  • ${r}`).join('\n')}
+
+${analysis.flags.length > 0 ? `FLAGS:\n${analysis.flags.map(f => `  ⚠️ ${f}`).join('\n')}` : ''}
     `.trim();
+  }
+
+  private getDetailedAnalysis(query: string, entry: DictionaryEntry, score: SemanticScore): AnalysisDetails {
+    const reasoning: string[] = [];
+    const flags: string[] = [];
+    
+    let matchType = 'No Match';
+    let confidence = 'Very Low';
+    
+    if (score.totalScore >= 0.9) {
+      matchType = 'Excellent Match';
+      confidence = 'Very High';
+    } else if (score.totalScore >= 0.7) {
+      matchType = 'Good Match';
+      confidence = 'High';
+    } else if (score.totalScore >= 0.5) {
+      matchType = 'Fair Match';
+      confidence = 'Medium';
+    } else if (score.totalScore >= 0.3) {
+      matchType = 'Weak Match';
+      confidence = 'Low';
+    } else if (score.totalScore >= 0.1) {
+      matchType = 'Poor Match';
+      confidence = 'Very Low';
+    }
+    
+    // Analyze primary match
+    if (score.primaryMatch >= 0.9) {
+      reasoning.push('Strong primary match - query closely matches English field');
+    } else if (score.primaryMatch >= 0.5) {
+      reasoning.push('Moderate primary match - partial correspondence with English field');
+    } else if (score.primaryMatch > 0) {
+      reasoning.push('Weak primary match - limited correspondence with English field');
+    } else {
+      reasoning.push('No primary match - query does not match English field');
+      flags.push('NO_PRIMARY_MATCH');
+    }
+    
+    // Analyze context
+    if (score.contextScore >= 0.8) {
+      reasoning.push('Excellent context match - appears to be direct translation');
+    } else if (score.contextScore >= 0.5) {
+      reasoning.push('Good context match - likely relevant translation');
+    } else if (score.contextScore <= 0.3) {
+      reasoning.push('Poor context match - may be contextual usage only');
+      flags.push('CONTEXTUAL_USAGE');
+    }
+    
+    // Analyze completeness
+    if (score.completenessScore >= 0.8) {
+      reasoning.push('Comprehensive entry with examples and cultural context');
+    } else if (score.completenessScore <= 0.4) {
+      reasoning.push('Basic entry with limited additional information');
+      flags.push('LIMITED_INFO');
+    }
+    
+    return {
+      matchType,
+      confidence,
+      reasoning,
+      flags
+    };
+  }
+
+  /**
+   * Batch analysis for comparing multiple entries
+   */
+  batchAnalyze(query: string, entries: DictionaryEntry[]): Array<{
+    entry: DictionaryEntry;
+    score: SemanticScore;
+    rank: number;
+  }> {
+    console.log(`🔍 Batch analyzing ${entries.length} entries for query: "${query}"`);
+    
+    const results = entries.map(entry => ({
+      entry,
+      score: this.analyzeMatch(query, entry),
+      rank: 0
+    }));
+    
+    // Sort by total score and assign ranks
+    results.sort((a, b) => b.score.totalScore - a.score.totalScore);
+    results.forEach((result, index) => {
+      result.rank = index + 1;
+    });
+    
+    console.log(`📊 Batch analysis complete. Top 3 results:`);
+    results.slice(0, 3).forEach(result => {
+      console.log(`  ${result.rank}. ${result.entry.english} -> ${result.entry.ibibio} (${(result.score.totalScore * 100).toFixed(1)}%)`);
+    });
+    
+    return results;
   }
 }
 
 export const semanticAnalyzer = new SemanticAnalyzer();
-export type { SemanticScore };
+export type { SemanticScore, AnalysisDetails };
