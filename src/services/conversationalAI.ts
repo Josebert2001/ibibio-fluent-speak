@@ -80,31 +80,13 @@ class ConversationalAI {
     
     console.log(`🔍 Translation request for: "${extractedQuery}"`);
     
-    // Try intelligent search first using langchain agent
-    const searchResult = await langchainAgentService.searchWithAgent(extractedQuery);
-    
-    if (searchResult.result) {
-      const translation = {
-        ibibio: searchResult.result.ibibio,
-        meaning: searchResult.result.meaning,
-        pronunciation: searchResult.result.pronunciation,
-        cultural: searchResult.result.cultural
-      };
-      
-      // Record word learned
-      enhancedMemoryService.recordWordLearned(extractedQuery, searchResult.confidence);
-      
-      const contextualContent = await this.generateContextualResponse(message, translation, history);
-      
-      return {
-        content: contextualContent,
-        translation
-      };
-    }
-    
-    // Fallback to local dictionary search
+    // STEP 1: Try local dictionary search FIRST (fastest and most reliable)
+    console.log(`📚 Checking local dictionary for: "${extractedQuery}"`);
     const localResult = dictionaryService.search(extractedQuery);
+    
     if (localResult) {
+      console.log(`✅ Found in local dictionary: ${localResult.english} -> ${localResult.ibibio}`);
+      
       const translation = {
         ibibio: localResult.ibibio,
         meaning: localResult.meaning,
@@ -112,9 +94,10 @@ class ConversationalAI {
         cultural: localResult.cultural
       };
       
-      enhancedMemoryService.recordWordLearned(extractedQuery, 0.9);
+      // Record word learned with high confidence (local dictionary is authoritative)
+      enhancedMemoryService.recordWordLearned(extractedQuery, 0.95);
       
-      const contextualContent = await this.generateContextualResponse(message, translation, history);
+      const contextualContent = await this.generateContextualResponse(message, translation, history, 'local_dictionary');
       
       return {
         content: contextualContent,
@@ -122,7 +105,36 @@ class ConversationalAI {
       };
     }
     
-    // Final fallback response
+    console.log(`❌ Not found in local dictionary, trying online search...`);
+    
+    // STEP 2: If not found locally, try intelligent online search
+    // Try intelligent search first using langchain agent
+    const searchResult = await langchainAgentService.searchWithAgent(extractedQuery);
+    
+    if (searchResult.result) {
+      console.log(`✅ Found via online search: ${searchResult.result.english} -> ${searchResult.result.ibibio}`);
+      
+      const translation = {
+        ibibio: searchResult.result.ibibio,
+        meaning: searchResult.result.meaning,
+        pronunciation: searchResult.result.pronunciation,
+        cultural: searchResult.result.cultural
+      };
+      
+      // Record word learned with online search confidence
+      enhancedMemoryService.recordWordLearned(extractedQuery, searchResult.confidence);
+      
+      const contextualContent = await this.generateContextualResponse(message, translation, history, 'online_search');
+      
+      return {
+        content: contextualContent,
+        translation
+      };
+    }
+    
+    console.log(`❌ No translation found in any source for: "${extractedQuery}"`);
+    
+    // STEP 3: Final fallback response when no translation is found
     return {
       content: `I'd be happy to help you translate "${extractedQuery}" to Ibibio! However, I couldn't find a definitive translation in my current knowledge base. 
 
@@ -292,12 +304,22 @@ Guidelines:
   private async generateContextualResponse(
     originalQuery: string, 
     translation: any, 
-    history: Array<{role: string, content: string}>
+    history: Array<{role: string, content: string}>,
+    source: string = 'unknown'
   ): Promise<string> {
     const examples = translation.examples || [];
     const cultural = translation.cultural || '';
     
-    let response = `Great question! Here's the Ibibio translation:`;
+    // Add source information to build user confidence
+    let response = '';
+    
+    if (source === 'local_dictionary') {
+      response = `Great question! I found this in our verified Ibibio dictionary:`;
+    } else if (source === 'online_search') {
+      response = `Great question! I found this through our AI-powered search:`;
+    } else {
+      response = `Great question! Here's the Ibibio translation:`;
+    }
     
     if (cultural) {
       response += `\n\n💡 **Cultural Context:**\n${cultural}`;
@@ -314,6 +336,11 @@ Guidelines:
     const userProfile = enhancedMemoryService.getUserProfile();
     if (userProfile.totalWordsLearned > 0 && userProfile.totalWordsLearned % 10 === 0) {
       response += `\n\n🎉 Congratulations! You've now learned ${userProfile.totalWordsLearned} Ibibio words! Keep up the excellent work!`;
+    }
+    
+    // Add source attribution for transparency
+    if (source === 'local_dictionary') {
+      response += `\n\n📚 *Source: Verified Local Dictionary*`;
     }
     
     response += `\n\nWould you like to know more about this word, learn related terms, or explore other aspects of Ibibio language and culture?`;
