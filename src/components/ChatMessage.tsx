@@ -2,7 +2,7 @@ import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Volume2, Loader2, Copy, BookOpen, Globe, Heart } from 'lucide-react';
+import { Volume2, Loader2, Copy, BookOpen, Globe, Heart, User, Bot } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -37,8 +37,11 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
 
   if (message.isTyping) {
     return (
-      <div className="flex justify-start">
-        <Card className="p-4 max-w-xs bg-gray-100 border-l-4 border-l-blue-500">
+      <div className="flex items-start space-x-3">
+        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center flex-shrink-0">
+          <Bot className="w-4 h-4 text-white" />
+        </div>
+        <Card className="p-4 max-w-xs bg-gray-100 border-gray-200">
           <div className="flex items-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
             <span className="text-sm text-gray-600">Thinking...</span>
@@ -49,13 +52,28 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
   }
 
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
-      <div className={cn("max-w-2xl space-y-3", isUser ? "w-full" : "w-full")}>
+    <div className={cn("flex items-start space-x-3", isUser && "flex-row-reverse space-x-reverse")}>
+      {/* Avatar */}
+      <div className={cn(
+        "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+        isUser 
+          ? "bg-gray-600" 
+          : "bg-gradient-to-r from-blue-600 to-purple-600"
+      )}>
+        {isUser ? (
+          <User className="w-4 h-4 text-white" />
+        ) : (
+          <Bot className="w-4 h-4 text-white" />
+        )}
+      </div>
+
+      {/* Message Content */}
+      <div className={cn("flex-1 space-y-3", isUser ? "max-w-2xl" : "max-w-3xl")}>
         {/* Main Message */}
         <Card className={cn(
           "p-4 relative group",
           isUser 
-            ? "bg-blue-500 text-white border-blue-600" 
+            ? "bg-blue-600 text-white border-blue-600 ml-auto" 
             : "bg-white border border-gray-200 shadow-sm"
         )}>
           <div className="space-y-3">
@@ -76,7 +94,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
                   onClick={() => handleCopy(message.content)}
                   className={cn(
                     "h-6 px-2 text-xs",
-                    isUser ? "hover:bg-blue-400 text-blue-100" : "hover:bg-gray-100"
+                    isUser ? "hover:bg-blue-500 text-blue-100" : "hover:bg-gray-100"
                   )}
                 >
                   <Copy className="w-3 h-3 mr-1" />
@@ -100,7 +118,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
         {/* Translation Card */}
         {message.translation && (
           <Card className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 border-l-4 border-l-purple-500 shadow-sm">
-            <div className="space-y-3">
+            <div className="space-y-4">
               {/* Header */}
               <div className="flex items-center justify-between">
                 <Badge variant="outline" className="bg-purple-100 text-purple-700 border-purple-300">
@@ -120,9 +138,9 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
               </div>
 
               {/* Ibibio Translation */}
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="font-semibold text-xl text-gray-800">
+                  <div className="font-bold text-2xl text-gray-800 font-serif">
                     {message.translation.ibibio}
                   </div>
                   <Button
@@ -135,17 +153,17 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
                   </Button>
                 </div>
                 
-                <div className="text-sm text-gray-600">
-                  <strong>Meaning:</strong> {message.translation.meaning}
+                <div className="text-sm text-gray-700 bg-white p-3 rounded border border-purple-200">
+                  <strong className="text-purple-700">Meaning:</strong> {message.translation.meaning}
                 </div>
               </div>
 
               {/* Pronunciation */}
               {message.translation.pronunciation && (
-                <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                <div className="p-3 bg-blue-50 rounded border border-blue-200">
                   <div className="text-sm">
                     <strong className="text-blue-700">Pronunciation:</strong>
-                    <span className="ml-2 font-mono text-blue-800">
+                    <span className="ml-2 font-mono text-blue-800 text-base">
                       {message.translation.pronunciation}
                     </span>
                   </div>
@@ -154,12 +172,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
 
               {/* Cultural Context */}
               {message.translation.cultural && (
-                <div className="p-3 bg-amber-50 rounded border border-amber-200">
-                  <div className="flex items-start gap-2">
-                    <Heart className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="p-4 bg-amber-50 rounded border border-amber-200">
+                  <div className="flex items-start gap-3">
+                    <Heart className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                     <div className="text-sm">
-                      <strong className="text-amber-700">Cultural Note:</strong>
-                      <p className="mt-1 text-amber-800 leading-relaxed">
+                      <strong className="text-amber-700 block mb-2">Cultural Insight:</strong>
+                      <p className="text-amber-800 leading-relaxed">
                         {message.translation.cultural}
                       </p>
                     </div>
@@ -168,12 +186,12 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
               )}
 
               {/* Quick Actions */}
-              <div className="flex flex-wrap gap-2 pt-2 border-t border-purple-200">
+              <div className="flex flex-wrap gap-2 pt-3 border-t border-purple-200">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => handleCopy(`${message.translation!.ibibio} - ${message.translation!.meaning}`)}
-                  className="h-7 px-3 text-xs bg-white hover:bg-purple-50 border-purple-200"
+                  className="h-8 px-3 text-xs bg-white hover:bg-purple-50 border-purple-200"
                 >
                   <Copy className="w-3 h-3 mr-1" />
                   Copy Translation
@@ -181,11 +199,22 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message, onPlayPronunciation 
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 px-3 text-xs bg-white hover:bg-purple-50 border-purple-200"
+                  className="h-8 px-3 text-xs bg-white hover:bg-purple-50 border-purple-200"
                 >
                   <BookOpen className="w-3 h-3 mr-1" />
                   Learn More
                 </Button>
+                {onPlayPronunciation && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onPlayPronunciation(message.translation!.ibibio)}
+                    className="h-8 px-3 text-xs bg-white hover:bg-purple-50 border-purple-200"
+                  >
+                    <Volume2 className="w-3 h-3 mr-1" />
+                    Listen
+                  </Button>
+                )}
               </div>
             </div>
           </Card>

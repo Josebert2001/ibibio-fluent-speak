@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, Volume2, Mic, Settings, BookOpen, Target } from 'lucide-react';
+import { Send, Loader2, Volume2, Mic, Settings, BookOpen, Target, Sparkles, Menu } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import ChatMessage from './ChatMessage';
 import QuickReplyButtons from './QuickReplyButtons';
@@ -43,7 +43,7 @@ const ChatInterface = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string>('');
   const [followUpSuggestions, setFollowUpSuggestions] = useState<any[]>([]);
-  const [showVoicePanel, setShowVoicePanel] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [dailyChallenge, setDailyChallenge] = useState<any>(null);
   const [lastTranscript, setLastTranscript] = useState('');
@@ -65,6 +65,7 @@ const ChatInterface = () => {
   });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -75,6 +76,14 @@ const ChatInterface = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    // Auto-resize textarea
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
+    }
+  }, [input]);
 
   const initializeChat = async () => {
     const newSessionId = chatSessionManager.createSession();
@@ -103,18 +112,18 @@ const ChatInterface = () => {
     // Add welcome message with personalization
     const welcomeMessage: ChatMessage = {
       id: 'welcome',
-      content: `Nno! Welcome back to your Ibibio learning journey! 🌟
+      content: `Nno! Welcome to Ibi-Voice, your Ibibio language learning assistant! 🌟
 
-${userProfile.streakDays > 0 ? `Great job on your ${userProfile.streakDays}-day streak! 🔥` : ''}
-You've learned ${userProfile.totalWordsLearned} words so far.
+${userProfile.streakDays > 0 ? `🔥 Amazing! You're on a ${userProfile.streakDays}-day learning streak!` : ''}
+${userProfile.totalWordsLearned > 0 ? `📚 You've learned ${userProfile.totalWordsLearned} Ibibio words so far.` : ''}
 
-I can help you with:
-• Translations and pronunciation
-• Cultural insights and traditions  
-• Structured learning paths
-• Daily challenges and practice
+I'm here to help you:
+• **Translate** English words and phrases to Ibibio
+• **Learn** about Ibibio culture and traditions
+• **Practice** pronunciation and conversation
+• **Explore** the rich heritage of the Ibibio people
 
-What would you like to explore today?`,
+What would you like to learn today?`,
       sender: 'ai',
       timestamp: new Date()
     };
@@ -240,6 +249,8 @@ What would you like to explore today?`,
 
   const handleQuickReply = (text: string) => {
     setInput(text);
+    // Focus textarea after setting input
+    setTimeout(() => textareaRef.current?.focus(), 100);
   };
 
   const handleVoiceCommand = (command: string, params?: string[]) => {
@@ -309,7 +320,7 @@ What would you like to explore today?`,
   };
 
   const conversationStarters = [
-    "How do you say 'good morning' in Ibibio?",
+    "How do you say 'hello' in Ibibio?",
     "Tell me about Ibibio culture",
     "What are common Ibibio greetings?",
     "Translate: I love my family",
@@ -327,28 +338,100 @@ What would you like to explore today?`,
   ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-200px)] max-w-6xl mx-auto gap-4">
-      {/* Learning Progress and Daily Challenge */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <LearningProgressBar stats={learningStats} />
-        </div>
-        <div>
-          {dailyChallenge && (
-            <DailyChallengeCard
-              challenge={dailyChallenge}
-              onComplete={handleChallengeComplete}
-              onPlayPronunciation={handlePlayPronunciation}
+    <div className="flex h-screen bg-gray-50">
+      {/* Sidebar */}
+      <div className={`${showSidebar ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-80 bg-white border-r border-gray-200 transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
+        <div className="flex flex-col h-full">
+          {/* Sidebar Header */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-200">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-lg font-bold text-gray-800">Ibi-Voice</h1>
+                <p className="text-xs text-gray-600">Ibibio Learning Assistant</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSidebar(false)}
+              className="lg:hidden"
+            >
+              ×
+            </Button>
+          </div>
+
+          {/* Learning Progress */}
+          <div className="p-4 border-b border-gray-200">
+            <LearningProgressBar stats={learningStats} compact />
+          </div>
+
+          {/* Daily Challenge */}
+          <div className="p-4 border-b border-gray-200">
+            {dailyChallenge && (
+              <DailyChallengeCard
+                challenge={dailyChallenge}
+                onComplete={handleChallengeComplete}
+                onPlayPronunciation={handlePlayPronunciation}
+                className="text-sm"
+              />
+            )}
+          </div>
+
+          {/* Voice Controls */}
+          <div className="flex-1 p-4">
+            <VoiceControlPanel
+              isListening={isListening}
+              onStartListening={handleStartListening}
+              onStopListening={handleStopListening}
+              onVoiceSettings={handleVoiceSettings}
+              currentSettings={voiceSettings}
+              supportedCommands={supportedCommands}
+              lastTranscript={lastTranscript}
+              className="h-full"
             />
-          )}
+          </div>
         </div>
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex flex-1 gap-4">
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Chat Header */}
+        <div className="flex items-center justify-between p-4 bg-white border-b border-gray-200">
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSidebar(true)}
+              className="lg:hidden"
+            >
+              <Menu className="w-5 h-5" />
+            </Button>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-800">Ibibio Language Assistant</h2>
+              <p className="text-sm text-gray-600">Ask me anything about Ibibio language and culture</p>
+            </div>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleStartListening}
+              className={isListening ? "text-red-600" : ""}
+            >
+              <Mic className="w-4 h-4" />
+            </Button>
+            <Button variant="ghost" size="sm">
+              <Settings className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
         {/* Chat Messages */}
-        <div className="flex-1 flex flex-col">
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-white rounded-lg border">
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-4xl mx-auto p-4 space-y-6">
             {messages.map((message) => (
               <ChatMessage
                 key={message.id}
@@ -358,23 +441,25 @@ What would you like to explore today?`,
             ))}
             <div ref={messagesEndRef} />
           </div>
+        </div>
 
-          {/* Follow-up Suggestions */}
-          {followUpSuggestions.length > 0 && (
-            <div className="p-4 border-t bg-gray-50 rounded-b-lg">
-              <QuickReplyButtons
-                suggestions={followUpSuggestions}
-                onReplyClick={handleQuickReply}
-              />
-            </div>
-          )}
+        {/* Follow-up Suggestions */}
+        {followUpSuggestions.length > 0 && (
+          <div className="max-w-4xl mx-auto px-4 pb-2">
+            <QuickReplyButtons
+              suggestions={followUpSuggestions}
+              onReplyClick={handleQuickReply}
+            />
+          </div>
+        )}
 
-          {/* Quick Actions for New Users */}
-          {messages.length === 1 && (
-            <div className="p-4 border-t bg-blue-50 rounded-b-lg">
-              <div className="text-sm text-blue-700 mb-3 font-medium">
-                <BookOpen className="w-4 h-4 inline mr-2" />
-                Try asking:
+        {/* Quick Actions for New Users */}
+        {messages.length === 1 && (
+          <div className="max-w-4xl mx-auto px-4 pb-4">
+            <Card className="p-4 bg-blue-50 border-blue-200">
+              <div className="text-sm text-blue-700 mb-3 font-medium flex items-center">
+                <BookOpen className="w-4 h-4 mr-2" />
+                Try these conversation starters:
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {conversationStarters.map((starter, index) => (
@@ -382,34 +467,35 @@ What would you like to explore today?`,
                     key={index}
                     variant="outline"
                     size="sm"
-                    onClick={() => setInput(starter)}
-                    className="text-xs justify-start h-auto py-2 px-3 text-left whitespace-normal"
+                    onClick={() => handleQuickReply(starter)}
+                    className="text-xs justify-start h-auto py-2 px-3 text-left whitespace-normal bg-white hover:bg-blue-50 border-blue-300"
                   >
                     {starter}
                   </Button>
                 ))}
               </div>
-            </div>
-          )}
+            </Card>
+          </div>
+        )}
 
-          {/* Input Area */}
-          <Card className="p-4 border-t">
-            <div className="flex gap-2">
-              <div className="flex-1">
+        {/* Input Area */}
+        <div className="border-t border-gray-200 bg-white">
+          <div className="max-w-4xl mx-auto p-4">
+            <div className="flex items-end space-x-3">
+              <div className="flex-1 relative">
                 <Textarea
+                  ref={textareaRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask me anything about Ibibio language and culture..."
-                  className="min-h-[60px] resize-none"
-                  rows={2}
+                  placeholder="Message Ibi-Voice..."
+                  className="min-h-[50px] max-h-[120px] resize-none pr-12 border-gray-300 focus:border-blue-500 focus:ring-blue-500"
+                  rows={1}
                 />
-              </div>
-              <div className="flex flex-col gap-2">
                 <Button
                   onClick={handleSend}
                   disabled={!input.trim() || isLoading}
-                  className="h-[60px] px-4"
+                  className="absolute right-2 bottom-2 h-8 w-8 p-0 rounded-full"
                 >
                   {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -417,38 +503,23 @@ What would you like to explore today?`,
                     <Send className="w-4 h-4" />
                   )}
                 </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowVoicePanel(!showVoicePanel)}
-                  className="h-[60px] px-4"
-                  title="Voice Controls"
-                >
-                  {isListening ? (
-                    <Mic className="w-4 h-4 text-red-500" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
-                </Button>
               </div>
             </div>
-          </Card>
-        </div>
-
-        {/* Voice Control Panel */}
-        {showVoicePanel && (
-          <div className="w-80">
-            <VoiceControlPanel
-              isListening={isListening}
-              onStartListening={handleStartListening}
-              onStopListening={handleStopListening}
-              onVoiceSettings={handleVoiceSettings}
-              currentSettings={voiceSettings}
-              supportedCommands={supportedCommands}
-              lastTranscript={lastTranscript}
-            />
+            <div className="flex items-center justify-between mt-2 text-xs text-gray-500">
+              <span>Press Enter to send, Shift+Enter for new line</span>
+              <span>{input.length}/2000</span>
+            </div>
           </div>
-        )}
+        </div>
       </div>
+
+      {/* Overlay for mobile sidebar */}
+      {showSidebar && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+          onClick={() => setShowSidebar(false)}
+        />
+      )}
     </div>
   );
 };
