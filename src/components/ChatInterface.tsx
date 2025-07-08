@@ -3,12 +3,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Loader2, Volume2 } from 'lucide-react';
+import { Send, Loader2, Volume2, Mic } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import ChatMessage from './ChatMessage';
+import QuickReplyButtons from './QuickReplyButtons';
+import LearningProgressBar from './LearningProgressBar';
+import DailyChallengeCard from './DailyChallengeCard';
+import VoiceControlPanel from './VoiceControlPanel';
 import { conversationalAI } from '../services/conversationalAI';
 import { chatSessionManager } from '../services/chatSessionManager';
 import { voiceService } from '../services/voiceService';
+import { enhancedMemoryService } from '../services/enhancedMemoryService';
+import { learningPathService } from '../services/learningPathService';
+import { enhancedVoiceService } from '../services/enhancedVoiceService';
 
 interface ChatMessage {
   id: string;
@@ -29,6 +36,10 @@ const ChatInterface = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string>('');
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<any[]>([]);
+  const [showVoicePanel, setShowVoicePanel] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [dailyChallenge, setDailyChallenge] = useState<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -38,23 +49,38 @@ const ChatInterface = () => {
       const newSessionId = chatSessionManager.createSession();
       setSessionId(newSessionId);
       
-      // Add welcome message
+      // Update daily streak
+      enhancedMemoryService.updateDailyStreak();
+      
+      // Load daily challenge
+      const challenge = learningPathService.generateDailyChallenge();
+      setDailyChallenge(challenge);
+      
+      // Add welcome message with personalization
+      const userProfile = enhancedMemoryService.getUserProfile();
       const welcomeMessage: ChatMessage = {
         id: 'welcome',
-        content: `Nno! Welcome to your Ibibio language assistant! 🌟
+        content: `Nno! Welcome back to your Ibibio learning journey! 🌟
 
-I'm here to help you learn Ibibio language and culture. You can ask me things like:
-• "How do you say 'hello' in Ibibio?"
-• "Tell me about Ibibio culture"
-• "What's the difference between 'uduak' and 'mme'?"
-• "Translate: I love my family"
+${userProfile.streakDays > 0 ? `Great job on your ${userProfile.streakDays}-day streak! 🔥` : ''}
+You've learned ${userProfile.totalWordsLearned} words so far.
 
-What would you like to know?`,
+I can help you with:
+• Translations and pronunciation
+• Cultural insights and traditions  
+• Structured learning paths
+• Daily challenges and practice
+
+What would you like to explore today?`,
         sender: 'ai',
         timestamp: new Date()
       };
       
       setMessages([welcomeMessage]);
+      
+      // Generate initial suggestions
+      const suggestions = enhancedMemoryService.generateFollowUpSuggestions('welcome', '');
+      setFollowUpSuggestions(suggestions);
     };
 
     initializeChat();
